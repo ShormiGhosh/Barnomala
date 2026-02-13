@@ -4,11 +4,7 @@
 %x COMMENT 
 %option noyywrap
 %option yylineno
-%option 8bit
 
-
-DIGIT       [০-৯]+
-LETTER      [অ-ঔক-হঙ-হড়ঢ়য়]
 
 %%
 
@@ -53,16 +49,32 @@ LETTER      [অ-ঔক-হঙ-হড়ঢ়য়]
 "সিল"               { printf("TOKEN: CEIL (%s)\n", yytext); }
 "পরম"               { printf("TOKEN: ABS (%s)\n", yytext); }
 
+"+"                 { printf("TOKEN: PLUS (%s)\n", yytext); }
 "যোগ"               { printf("TOKEN: PLUS (%s)\n", yytext); }
+"-"                 { printf("TOKEN: MINUS (%s)\n", yytext); }
 "বিয়োগ"            { printf("TOKEN: MINUS (%s)\n", yytext); }
+"*"                 { printf("TOKEN: MULT (%s)\n", yytext); }
 "গুণ"               { printf("TOKEN: MULT (%s)\n", yytext); }
+"/"                 { printf("TOKEN: DIV (%s)\n", yytext); }
 "ভাগ"               { printf("TOKEN: DIV (%s)\n", yytext); }
+"%"                 { printf("TOKEN: MOD (%s)\n", yytext); }
 "ভাগশেষ"           { printf("TOKEN: MOD (%s)\n", yytext); }
+"&&"                { printf("TOKEN: AND (%s)\n", yytext); }
 "এবং"              { printf("TOKEN: AND (%s)\n", yytext); }
+"||"                { printf("TOKEN: OR (%s)\n", yytext); }
 "অথবা"             { printf("TOKEN: OR (%s)\n", yytext); }
-"নয়"               { printf("TOKEN: NOT (%s)\n", yytext); }
-"বাড়াও"             { printf("TOKEN: INC (%s)\n", yytext); }
+"!"                 { printf("TOKEN: NOT (%s)\n", yytext); }
+"নয়"               { printf("TOKEN: NOT (%s)\n", yytext); }
+"++"                { printf("TOKEN: INC (%s)\n", yytext); }
+"বাড়াও"             { printf("TOKEN: INC (%s)\n", yytext); }
+"--"                { printf("TOKEN: DEC (%s)\n", yytext); }
 "কমাও"             { printf("TOKEN: DEC (%s)\n", yytext); }
+"=="                { printf("TOKEN: EQUAL (%s)\n", yytext); }
+"!="                { printf("TOKEN: NOT_EQUAL (%s)\n", yytext); }
+">="                { printf("TOKEN: GREATER_EQUAL (%s)\n", yytext); }
+"<="                { printf("TOKEN: LESS_EQUAL (%s)\n", yytext); }
+">"                 { printf("TOKEN: GREATER (%s)\n", yytext); }
+"<"                 { printf("TOKEN: LESS (%s)\n", yytext); }
 "="                 { printf("TOKEN: ASSIGN (%s)\n", yytext); }
 "সমান"             { printf("TOKEN: EQUAL (%s)\n", yytext); }
 "অসমান"            { printf("TOKEN: NOT_EQUAL (%s)\n", yytext); }
@@ -75,8 +87,9 @@ LETTER      [অ-ঔক-হঙ-হড়ঢ়য়]
 "মিথ্যা"           { printf("TOKEN: BOOL_FALSE (%s)\n", yytext); }
 
 \"([^\"]|\\\")*\"   { printf("TOKEN: STRING_LITERAL (%s)\n", yytext); }
-\'([^\']|\\\')\'    { printf("TOKEN: CHAR_LITERAL (%s)\n", yytext); }
-{DIGIT}+("."{DIGIT}+)? { printf("TOKEN: NUMBER_LITERAL (%s)\n", yytext); }
+\'([^'\n\\]|\\.)+\' { printf("TOKEN: CHAR_LITERAL (%s)\n", yytext); }
+
+(\xE0\xA7[\xA6-\xAF])+("."(\xE0\xA7[\xA6-\xAF])+)? { printf("TOKEN: NUMBER_LITERAL (%s)\n", yytext); }
 
 "মন্তব্য"              { BEGIN(COMMENT); }   
 
@@ -85,8 +98,7 @@ LETTER      [অ-ঔক-হঙ-হড়ঢ়য়]
     .|\n                 { }
 }
 
-
-{LETTER}({LETTER}|{DIGIT}|_)* { printf("TOKEN: IDENTIFIER (%s)\n", yytext); }
+(\xE0\xA6[\x80-\x82\x84-\xBF]|\xE0\xA7[\x80-\xBF])(\xE0\xA6[\x80-\x82\x84-\xBF]|\xE0\xA7[\x80-\xBF]|_)* { printf("TOKEN: IDENTIFIER (%s)\n", yytext); }
 
 .                    { printf("TOKEN: UNKNOWN (%s)\n", yytext); }
 
