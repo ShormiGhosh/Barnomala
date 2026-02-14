@@ -87,9 +87,10 @@
 "মিথ্যা"           { printf("TOKEN: BOOL_FALSE (%s)\n", yytext); }
 
 \"([^\"]|\\\")*\"   { printf("TOKEN: STRING_LITERAL (%s)\n", yytext); }
-\'([^'\n\\]|\\.)+\' { printf("TOKEN: CHAR_LITERAL (%s)\n", yytext); }
+\'(\xE0[\xA6\xA7][\x80-\xBF]|[^'\n\\]|\\.)\'  { printf("TOKEN: CHAR_LITERAL (%s)\n", yytext); }
 
-(\xE0\xA7[\xA6-\xAF])+("."(\xE0\xA7[\xA6-\xAF])+)? { printf("TOKEN: NUMBER_LITERAL (%s)\n", yytext); }
+(\xE0\xA7[\xA6-\xAF])+"."(\xE0\xA7[\xA6-\xAF])+ { printf("TOKEN: FLOAT_LITERAL (%s)\n", yytext); }
+(\xE0\xA7[\xA6-\xAF])+ { printf("TOKEN: INT_LITERAL (%s)\n", yytext); }
 
 "মন্তব্য"              { BEGIN(COMMENT); }   
 
@@ -98,7 +99,7 @@
     .|\n                 { }
 }
 
-(\xE0\xA6[\x80-\x82\x84-\xBF]|\xE0\xA7[\x80-\xBF])(\xE0\xA6[\x80-\x82\x84-\xBF]|\xE0\xA7[\x80-\xBF]|_)* { printf("TOKEN: IDENTIFIER (%s)\n", yytext); }
+(\xE0\xA6[\x80-\x82\x84-\xBF]|\xE0\xA7[\x80-\xBF]|_)(\xE0\xA6[\x80-\x82\x84-\xBF]|\xE0\xA7[\x80-\xBF]|\xE0\xA7[\xA6-\xAF]|_)* { printf("TOKEN: IDENTIFIER (%s)\n", yytext); }
 
 .                    { printf("TOKEN: UNKNOWN (%s)\n", yytext); }
 
