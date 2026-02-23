@@ -1,126 +1,266 @@
 %{
 #include <stdio.h>
-%}
-%x COMMENT 
-%option noyywrap
-%option yylineno
+#include <stdlib.h>
+#include <string.h>
+#include "bparser.tab.h"
 
+/* Indentation tracking */
+#define MAX_INDENT_DEPTH 100
+int indent_stack[MAX_INDENT_DEPTH];
+int indent_top = 0;
+int pending_dedents = 0;
+int pending_indent = 0;
+int paren_depth = 0;
 
-%%
-
-[ \t\n\r]+          { /* skip whitespace */ }
-
-"("                 { printf("TOKEN: LPAREN (%s)\n", yytext); }
-")"                 { printf("TOKEN: RPAREN (%s)\n", yytext); }
-"["                 { printf("TOKEN: LBRACKET (%s)\n", yytext); }
-"]"                 { printf("TOKEN: RBRACKET (%s)\n", yytext); }
-","                 { printf("TOKEN: COMMA (%s)\n", yytext); }
-"ঃ"                 { printf("TOKEN: COLON (%s)\n", yytext); }
-"।"                 { printf("TOKEN: SEMICOLON (%s)\n", yytext); }
-
-"শুরু_প্রোগ্রাম"    { printf("TOKEN: PROGRAM_START (%s)\n", yytext); }
-"শেষ_প্রোগ্রাম"     { printf("TOKEN: PROGRAM_END (%s)\n", yytext); }
-
-"প্রয়োজন"<[^>]+>   { printf("TOKEN: INCLUDE (%s)\n", yytext); }
-
-"সংখ্যা"             { printf("TOKEN: NUMBER_TYPE (%s)\n", yytext); }
-"দশমিক"             { printf("TOKEN: DECIMAL_TYPE (%s)\n", yytext); }
-"বুলিয়ান"            { printf("TOKEN: BOOL_TYPE (%s)\n", yytext); }
-"অক্ষর"             { printf("TOKEN: CHAR_TYPE (%s)\n", yytext); }
-"বাক্য"             { printf("TOKEN: STRING_TYPE (%s)\n", yytext); }
-
-"যদি"               { printf("TOKEN: IF (%s)\n", yytext); }
-"নাহলে"             { printf("TOKEN: ELSE (%s)\n", yytext); }
-"যতক্ষণ"           { printf("TOKEN: WHILE (%s)\n", yytext); }
-"ঘুরতে_থাক"         { printf("TOKEN: FOR_RANGE (%s)\n", yytext); }
-"থেকে"             { printf("TOKEN: FROM (%s)\n", yytext); }
-"প্রক্রিয়া"          { printf("TOKEN: FUNCTION (%s)\n", yytext); }
-"থামো"              { printf("TOKEN: BREAK (%s)\n", yytext); }
-"চালিয়ে_যাও"        { printf("TOKEN: CONTINUE (%s)\n", yytext); }
-"ফিরিয়ে_দাও"        { printf("TOKEN: RETURN (%s)\n", yytext); }
-"দেখাও"             { printf("TOKEN: PRINT (%s)\n", yytext); }
-"নাও"               { printf("TOKEN: INPUT (%s)\n", yytext); }
-
-"ধারক"             { printf("TOKEN: ARRAY (%s)\n", yytext); }
-
-"শক্তি"             { printf("TOKEN: POW (%s)\n", yytext); }
-"বর্গমূল"           { printf("TOKEN: SQRT (%s)\n", yytext); }
-"ফ্লোর"             { printf("TOKEN: FLOOR (%s)\n", yytext); }
-"সিল"               { printf("TOKEN: CEIL (%s)\n", yytext); }
-"পরম"               { printf("TOKEN: ABS (%s)\n", yytext); }
-
-"+"                 { printf("TOKEN: PLUS (%s)\n", yytext); }
-"যোগ"               { printf("TOKEN: PLUS (%s)\n", yytext); }
-"-"                 { printf("TOKEN: MINUS (%s)\n", yytext); }
-"বিয়োগ"            { printf("TOKEN: MINUS (%s)\n", yytext); }
-"*"                 { printf("TOKEN: MULT (%s)\n", yytext); }
-"গুণ"               { printf("TOKEN: MULT (%s)\n", yytext); }
-"/"                 { printf("TOKEN: DIV (%s)\n", yytext); }
-"ভাগ"               { printf("TOKEN: DIV (%s)\n", yytext); }
-"%"                 { printf("TOKEN: MOD (%s)\n", yytext); }
-"ভাগশেষ"           { printf("TOKEN: MOD (%s)\n", yytext); }
-"&&"                { printf("TOKEN: AND (%s)\n", yytext); }
-"এবং"              { printf("TOKEN: AND (%s)\n", yytext); }
-"||"                { printf("TOKEN: OR (%s)\n", yytext); }
-"অথবা"             { printf("TOKEN: OR (%s)\n", yytext); }
-"!"                 { printf("TOKEN: NOT (%s)\n", yytext); }
-"নয়"               { printf("TOKEN: NOT (%s)\n", yytext); }
-"++"                { printf("TOKEN: INC (%s)\n", yytext); }
-"বাড়াও"             { printf("TOKEN: INC (%s)\n", yytext); }
-"--"                { printf("TOKEN: DEC (%s)\n", yytext); }
-"কমাও"             { printf("TOKEN: DEC (%s)\n", yytext); }
-"=="                { printf("TOKEN: EQUAL (%s)\n", yytext); }
-"!="                { printf("TOKEN: NOT_EQUAL (%s)\n", yytext); }
-">="                { printf("TOKEN: GREATER_EQUAL (%s)\n", yytext); }
-"<="                { printf("TOKEN: LESS_EQUAL (%s)\n", yytext); }
-">"                 { printf("TOKEN: GREATER (%s)\n", yytext); }
-"<"                 { printf("TOKEN: LESS (%s)\n", yytext); }
-"="                 { printf("TOKEN: ASSIGN (%s)\n", yytext); }
-"সমান"             { printf("TOKEN: EQUAL (%s)\n", yytext); }
-"অসমান"            { printf("TOKEN: NOT_EQUAL (%s)\n", yytext); }
-"বড়_সমান"         { printf("TOKEN: GREATER_EQUAL (%s)\n", yytext); }
-"ছোট_সমান"        { printf("TOKEN: LESS_EQUAL (%s)\n", yytext); }
-"বড়"               { printf("TOKEN: GREATER (%s)\n", yytext); }
-"ছোট"              { printf("TOKEN: LESS (%s)\n", yytext); }
-
-"সত্য"             { printf("TOKEN: BOOL_TRUE (%s)\n", yytext); }
-"মিথ্যা"           { printf("TOKEN: BOOL_FALSE (%s)\n", yytext); }
-
-\"([^\"]|\\\")*\"   { printf("TOKEN: STRING_LITERAL (%s)\n", yytext); }
-\'(\xE0[\xA6\xA7][\x80-\xBF]|[^'\n\\]|\\.)\'  { printf("TOKEN: CHAR_LITERAL (%s)\n", yytext); }
-
-(\xE0\xA7[\xA6-\xAF])+"."(\xE0\xA7[\xA6-\xAF])+ { printf("TOKEN: FLOAT_LITERAL (%s)\n", yytext); }
-(\xE0\xA7[\xA6-\xAF])+ { printf("TOKEN: INT_LITERAL (%s)\n", yytext); }
-
-"মন্তব্য"              { BEGIN(COMMENT); }   
-
-<COMMENT>{
-    "মন্তব্য_শেষ"           { BEGIN(INITIAL); }  
-    .|\n                 { }
+void push_indent(int level) {
+    if (indent_top < MAX_INDENT_DEPTH - 1) {
+        indent_stack[++indent_top] = level;
+    }
 }
 
-(\xE0\xA6[\x80-\x82\x84-\xBF]|\xE0\xA7[\x80-\xBF]|_)(\xE0\xA6[\x80-\x82\x84-\xBF]|\xE0\xA7[\x80-\xBF]|\xE0\xA7[\xA6-\xAF]|_)* { printf("TOKEN: IDENTIFIER (%s)\n", yytext); }
-
-.                    { printf("TOKEN: UNKNOWN (%s)\n", yytext); }
-
-%%
-
-int main(int argc, char *argv[])
-{
-    if(argc < 2) {
-        printf("Usage: %s <input_file>\n", argv[0]);
-        return 1;
+int pop_indent() {
+    if (indent_top > 0) {
+        return indent_stack[indent_top--];
     }
-
-    FILE *fp = fopen(argv[1], "r");
-    if(!fp) {
-        printf("File open error\n");
-        return 1;
-    }
-
-    yyin = fp;
-    yylex();
-    fclose(fp);
     return 0;
 }
 
+int get_current_indent() {
+    return indent_top > 0 ? indent_stack[indent_top] : 0;
+}
+
+void init_indent() {
+    indent_top = 0;
+    indent_stack[0] = 0;
+    pending_dedents = 0;
+    pending_indent = 0;
+    paren_depth = 0;
+}
+
+/* Rename flex's generated scanner so we can wrap it */
+#define YY_DECL int internal_yylex(void)
+
+%}
+%x COMMENT
+%option noyywrap
+%option yylineno
+
+%%
+
+\n {
+    /* Skip newlines inside parentheses/brackets */
+    if (paren_depth > 0) {
+        /* ignore newlines inside parens */
+    } else {
+        /* Look ahead: skip blank lines, count indentation of next real line */
+        int c;
+        int indent;
+
+        while (1) {
+            indent = 0;
+            while ((c = input()) == ' ') {
+                indent++;
+            }
+            if (c == '\t') {
+                /* treat tab as 4 spaces */
+                indent += 4;
+                continue;
+            }
+            if (c == '\r') continue;
+            if (c == '\n') continue;  /* blank line, try next */
+            break;  /* found real content or EOF */
+        }
+
+        /* Put back the non-space character we just read */
+        if (c != EOF && c != 0) {
+            unput(c);
+        }
+
+        /* Compare indentation with current level */
+        int current = get_current_indent();
+
+        if (indent > current) {
+            push_indent(indent);
+            pending_indent = 1;
+        } else if (indent < current) {
+            while (indent_top > 0 && get_current_indent() > indent) {
+                pop_indent();
+                pending_dedents++;
+            }
+        }
+        /* indent == current: no INDENT/DEDENT needed */
+
+        return NEWLINE;
+    }
+}
+
+\r { /* Skip carriage return */ }
+
+[ \t]+ { /* Skip whitespace within lines */ }
+
+"("                 { paren_depth++; return LPAREN; }
+")"                 { paren_depth--; return RPAREN; }
+"["                 { paren_depth++; return LBRACKET; }
+"]"                 { paren_depth--; return RBRACKET; }
+","                 { return COMMA; }
+"ঃ"                 { return COLON; }
+"।"                 { return SEMICOLON; }
+
+"শুরু_প্রোগ্রাম"    { return PROGRAM_START; }
+"শেষ_প্রোগ্রাম"     { return PROGRAM_END; }
+
+"প্রয়োজন"<[^>]+>   { yylval.strval = strdup(yytext); return INCLUDE; }
+
+"সংখ্যা"             { return NUMBER_TYPE; }
+"দশমিক"             { return DECIMAL_TYPE; }
+"বুলিয়ান"            { return BOOL_TYPE; }
+"অক্ষর"             { return CHAR_TYPE; }
+"বাক্য"             { return STRING_TYPE; }
+
+"যদি"               { return IF; }
+"নাহলে"             { return ELSE; }
+"যতক্ষণ"           { return WHILE; }
+"ঘুরতে_থাক"         { return FOR_RANGE; }
+"থেকে"             { return FROM; }
+"প্রক্রিয়া"          { return FUNCTION; }
+"থামো"              { return BREAK; }
+"চালিয়ে_যাও"        { return CONTINUE; }
+"ফিরিয়ে_দাও"        { return RETURN; }
+"দেখাও"             { return PRINT; }
+"নাও"               { return INPUT; }
+
+"ধারক"             { return ARRAY; }
+
+"শক্তি"             { return POW; }
+"বর্গমূল"           { return SQRT; }
+"ফ্লোর"             { return FLOOR; }
+"সিল"               { return CEIL; }
+"পরম"               { return ABS; }
+
+"+"                 { return PLUS; }
+"যোগ"               { return PLUS; }
+"-"                 { return MINUS; }
+"বিয়োগ"            { return MINUS; }
+"*"                 { return MULT; }
+"গুণ"               { return MULT; }
+"/"                 { return DIV; }
+"ভাগ"               { return DIV; }
+"%"                 { return MOD; }
+"ভাগশেষ"           { return MOD; }
+"&&"                { return AND; }
+"এবং"              { return AND; }
+"||"                { return OR; }
+"অথবা"             { return OR; }
+"!"                 { return NOT; }
+"নয়"               { return NOT; }
+"++"                { return INC; }
+"বাড়াও"             { return INC; }
+"--"                { return DEC; }
+"কমাও"             { return DEC; }
+"=="                { return EQUAL; }
+"!="                { return NOT_EQUAL; }
+">="                { return GREATER_EQUAL; }
+"<="                { return LESS_EQUAL; }
+">"                 { return GREATER; }
+"<"                 { return LESS; }
+"="                 { return ASSIGN; }
+"সমান"             { return EQUAL; }
+"অসমান"            { return NOT_EQUAL; }
+"বড়_সমান"         { return GREATER_EQUAL; }
+"ছোট_সমান"        { return LESS_EQUAL; }
+"বড়"               { return GREATER; }
+"ছোট"              { return LESS; }
+
+"সত্য"             { return BOOL_TRUE; }
+"মিথ্যা"           { return BOOL_FALSE; }
+
+\"([^\"]|\\\")*\"   { yylval.strval = strdup(yytext); return STRING_LITERAL; }
+\'(\xE0[\xA6\xA7][\x80-\xBF]|[^'\n\\]|\\.)\'  { yylval.strval = strdup(yytext); return CHAR_LITERAL; }
+
+(\xE0\xA7[\xA6-\xAF])+"."(\xE0\xA7[\xA6-\xAF])+ {
+    /* Convert Bangla digits to English and parse as float */
+    char *english = strdup(yytext);
+    int len = strlen(yytext);
+    int pos = 0;
+    for(int i = 0; i < len; ) {
+        if(i + 2 < len && (unsigned char)english[i] == 0xE0 &&
+           (unsigned char)english[i+1] == 0xA7 &&
+           (unsigned char)english[i+2] >= 0xA6 &&
+           (unsigned char)english[i+2] <= 0xAF) {
+            int digit = (unsigned char)english[i+2] - 0xA6;
+            english[pos++] = '0' + digit;
+            i += 3;
+        } else {
+            english[pos++] = english[i++];
+        }
+    }
+    english[pos] = '\0';
+    yylval.floatval = atof(english);
+    free(english);
+    return FLOAT_LITERAL;
+}
+
+(\xE0\xA7[\xA6-\xAF])+ {
+    /* Convert Bangla digits to English and parse as int */
+    char *english = strdup(yytext);
+    int len = strlen(yytext);
+    int pos = 0;
+    for(int i = 0; i < len; ) {
+        if(i + 2 < len && (unsigned char)english[i] == 0xE0 &&
+           (unsigned char)english[i+1] == 0xA7 &&
+           (unsigned char)english[i+2] >= 0xA6 &&
+           (unsigned char)english[i+2] <= 0xAF) {
+            int digit = (unsigned char)english[i+2] - 0xA6;
+            english[pos++] = '0' + digit;
+            i += 3;
+        } else {
+            english[pos++] = english[i++];
+        }
+    }
+    english[pos] = '\0';
+    yylval.intval = atoi(english);
+    free(english);
+    return INT_LITERAL;
+}
+
+"মন্তব্য"              { BEGIN(COMMENT); }
+
+<COMMENT>{
+    "মন্তব্য_শেষ"           { BEGIN(INITIAL); }
+    .|\n                 { }
+}
+
+(\xE0\xA6[\x80-\x82\x84-\xBF]|\xE0\xA7[\x80-\xBF]|_)(\xE0\xA6[\x80-\x82\x84-\xBF]|\xE0\xA7[\x80-\xBF]|\xE0\xA7[\xA6-\xAF]|_)* { yylval.strval = strdup(yytext); return IDENTIFIER; }
+
+.                    { fprintf(stderr, "Unknown character: %s at line %d\n", yytext, yylineno); }
+
+<<EOF>> {
+    /* Emit remaining dedents at end of file */
+    if (pending_dedents > 0) {
+        pending_dedents--;
+        return DEDENT;
+    }
+    if (indent_top > 0) {
+        pop_indent();
+        return DEDENT;
+    }
+    yyterminate();
+}
+
+%%
+
+/* Wrapper: emits pending INDENT/DEDENT tokens before calling the real scanner */
+int yylex(void) {
+    /* First drain any pending INDENT */
+    if (pending_indent) {
+        pending_indent = 0;
+        return INDENT;
+    }
+    /* Then drain any pending DEDENTs */
+    if (pending_dedents > 0) {
+        pending_dedents--;
+        return DEDENT;
+    }
+    /* Otherwise get the next token from flex */
+    return internal_yylex();
+}

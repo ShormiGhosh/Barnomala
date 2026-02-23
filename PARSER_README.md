@@ -1,0 +1,1283 @@
+# বর্ণমালা (Barnomala) — Parser Explanation (`bparser.y`)
+
+This document explains **every line** of the `bparser.y` file — the parser (syntax analyzer) for the Bangla programming language.
+
+A parser's job is to take the stream of **tokens** from the lexer and check whether they form a **valid program** according to the grammar rules.
+
+---
+
+## File Structure Overview
+
+A Bison (`.y`) file has **3 sections** separated by `%%`:
+
+```
+%{ ... %}       ← Section 1: C declarations (prologue)
+                ← Bison declarations (%union, %token, %left, etc.)
+%%              ← Section 2: Grammar rules
+%%              ← Section 3: User code (C functions)
+```
+
+---
+
+## Section 1: C Prologue (`%{ ... %}`)
+
+```c
+%{
+```
+**Purpose:** Opens the C prologue block. Everything between `%{` and `%}` is copied verbatim to the generated C file (`bparser.tab.c`).
+
+---
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+```
+**Purpose:** Standard C library headers.
+- `stdio.h` — `printf`, `fprintf`, `FILE`, `fopen`, `fclose`, `fread`, `fwrite`, `fseek`, `ftell`, `tmpfile`
+- `stdlib.h` — `malloc`, `free`, `atoi`, `atof`
+- `string.h` — `strdup`
+
+---
+
+```c
+void yyerror(const char *s);
+```
+**Purpose:** Forward declaration of the error handler function. Bison calls `yyerror()` automatically whenever it encounters a syntax error. We define the function body later (in Section 3). Bison requires this declaration to be visible before the grammar rules.
+
+---
+
+```c
+extern int yylex();
+```
+**Purpose:** Declares that `yylex()` exists in another file (the lexer). `extern` means "this function is defined elsewhere — don't look for it here." Bison calls `yylex()` every time it needs the next token. Our `yylex()` is the wrapper function in `blexer.l`.
+
+---
+
+```c
+extern int yylineno;
+```
+**Purpose:** Declares the line number variable from the lexer. We use this in `yyerror()` to report which line has a syntax error. The lexer automatically updates `yylineno` because we set `%option yylineno` in `blexer.l`.
+
+---
+
+```c
+extern FILE *yyin;
+```
+**Purpose:** Declares the input file pointer from the lexer. `yyin` is the file that Flex reads from. We set `yyin = normalize_input(fp)` in `main()` to point it at the normalized input.
+
+---
+
+```c
+extern void init_indent();
+```
+**Purpose:** Declares the indentation reset function from the lexer. We call this in `main()` before parsing to ensure the indent stack starts clean.
+
+---
+
+```c
+%}
+```
+**Purpose:** Closes the C prologue block.
+
+---
+
+## Bison Declarations
+
+### The %union Declaration
+
+```c
+%union {
+    int intval;
+    double floatval;
+    char *strval;
+}
+```
+**Purpose:** Defines the possible types of **semantic values** that tokens and grammar rules can carry. In Bison, every token/rule can have an associated value. `%union` creates a C union type called `YYSTYPE` with these fields:
+
+- `intval` — for integer values (e.g., the number `১৮` → 18)
+- `floatval` — for floating-point values (e.g., `৩.১৪` → 3.14)
+- `strval` — for string pointers (e.g., identifier names, string literals)
+
+**How it's used:** When the lexer does `yylval.intval = 42; return INT_LITERAL;`, the parser can access that value as `$1`, `$2`, etc. in grammar rules.
+
+**Note:** Right now we're a **syntax checker** (Stage 1), so we only use values for printing messages like `"Declaration: %s"`. In an interpreter (Stage 2), we'd use these values for computation (`$$ = $1 + $3`).
+
+---
+
+### Token Declarations (Tokens WITHOUT Values)
+
+```c
+%token PROGRAM_START PROGRAM_END
+```
+**Purpose:** Declares tokens for `শুরু_প্রোগ্রাম` and `শেষ_প্রোগ্রাম`. These are plain tokens — they don't carry any semantic value (no `<type>`).
+
+```c
+%token NUMBER_TYPE DECIMAL_TYPE BOOL_TYPE CHAR_TYPE STRING_TYPE
+```
+**Purpose:** Declares the five data type tokens: সংখ্যা, দশমিক, বুলিয়ান, অক্ষর, বাক্য.
+
+```c
+%token IF ELSE WHILE FOR_RANGE FROM
+```
+**Purpose:** Control flow tokens: যদি, নাহলে, যতক্ষণ, ঘুরতে_থাক, থেকে.
+
+```c
+%token FUNCTION BREAK CONTINUE RETURN
+```
+**Purpose:** Function and loop control tokens: প্রক্রিয়া, থামো, চালিয়ে_যাও, ফিরিয়ে_দাও.
+
+```c
+%token PRINT INPUT
+```
+**Purpose:** I/O tokens: দেখাও, নাও.
+
+```c
+%token LPAREN RPAREN LBRACKET RBRACKET
+```
+**Purpose:** Bracket tokens: `(`, `)`, `[`, `]`.
+
+```c
+%token COMMA COLON SEMICOLON
+```
+**Purpose:** Delimiter tokens: `,` (comma), `ঃ` (colon), `।` (danda/semicolon).
+
+```c
+%token ARRAY
+```
+**Purpose:** Array keyword token: ধারক.
+
+```c
+%token POW SQRT FLOOR CEIL ABS
+```
+**Purpose:** Math function tokens: শক্তি, বর্গমূল, ফ্লোর, সিল, পরম.
+
+```c
+%token INC DEC
+```
+**Purpose:** Increment/decrement tokens: `++`/বাড়াও, `--`/কমাও.
+
+```c
+%token BOOL_TRUE BOOL_FALSE
+```
+**Purpose:** Boolean literal tokens: সত্য, মিথ্যা.
+
+```c
+%token INCLUDE
+```
+**Purpose:** Include statement token: প্রয়োজন.
+
+```c
+%token INDENT DEDENT NEWLINE
+```
+**Purpose:** Indentation tokens generated by the lexer's wrapper function:
+- `INDENT` — indentation increased (entering a block)
+- `DEDENT` — indentation decreased (exiting a block)
+- `NEWLINE` — end of a line
+
+---
+
+### Token Declarations (Tokens WITH Values)
+
+```c
+%token <intval> INT_LITERAL
+```
+**Purpose:** Declares `INT_LITERAL` token with an `int` value. When the parser uses `$n` for an INT_LITERAL, it accesses `yylval.intval`. The `<intval>` refers to the `intval` field in the `%union`.
+
+```c
+%token <floatval> FLOAT_LITERAL
+```
+**Purpose:** Declares `FLOAT_LITERAL` token with a `double` value (`floatval` from `%union`).
+
+```c
+%token <strval> STRING_LITERAL CHAR_LITERAL IDENTIFIER
+```
+**Purpose:** Declares three tokens that carry string values (`char *`):
+- `STRING_LITERAL` — a double-quoted string like `"হ্যালো"`
+- `CHAR_LITERAL` — a single-quoted character like `'ক'`
+- `IDENTIFIER` — a variable/function name like `বয়স`
+
+---
+
+### Precedence and Associativity (The Dangling Else Fix)
+
+```c
+%nonassoc LOWER_THAN_ELSE
+%nonassoc ELSE
+```
+**Purpose:** This is the standard **dangling else** solution. Consider:
+
+```
+যদি a বড় ০ঃ
+    যদি b বড় ০ঃ
+        দেখাও "দুটোই ধনাত্মক"।
+    নাহলেঃ              ← Which যদি does this নাহলে belong to?
+        দেখাও "?"।
+```
+
+Without disambiguation, Bison doesn't know if `নাহলে` belongs to the inner or outer `যদি`. This causes a **shift/reduce conflict**.
+
+**How it works:**
+- `LOWER_THAN_ELSE` is a **fake token** that never appears in input — it's only used for precedence
+- The if-without-else rule uses `%prec LOWER_THAN_ELSE` (lower precedence)
+- The if-with-else rule naturally uses ELSE (higher precedence)
+- Since ELSE has higher precedence, Bison **shifts** (associates `নাহলে` with the nearest `যদি`) — the correct behavior
+
+`%nonassoc` means these tokens are not associative (can't chain like `a + b + c`).
+
+---
+
+### Operator Precedence (Low to High)
+
+Bison resolves **ambiguity** in expressions using precedence and associativity. Rules listed LATER have HIGHER precedence.
+
+```c
+%right ASSIGN
+```
+**Purpose:** Assignment `=` has the **lowest** operator precedence and is **right-associative**.
+- Right-associative means `a = b = ৫` is parsed as `a = (b = ৫)` (assign 5 to b first, then to a)
+- Lowest precedence means `x = ৫ যোগ ৩` is parsed as `x = (৫ যোগ ৩)` — the addition happens before assignment
+
+```c
+%left OR
+```
+**Purpose:** Logical OR (`||`/অথবা) — left-associative. `a অথবা b অথবা c` = `(a অথবা b) অথবা c`.
+
+```c
+%left AND
+```
+**Purpose:** Logical AND (`&&`/এবং) — higher precedence than OR. So `a অথবা b এবং c` = `a অথবা (b এবং c)`.
+
+```c
+%left EQUAL NOT_EQUAL
+```
+**Purpose:** Equality comparisons (`==`/সমান, `!=`/অসমান). Higher than AND/OR.
+
+```c
+%left GREATER LESS GREATER_EQUAL LESS_EQUAL
+```
+**Purpose:** Relational comparisons. Higher than equality.
+
+```c
+%left PLUS MINUS
+```
+**Purpose:** Addition and subtraction. Higher than comparisons. `x বড় ৫ যোগ ৩` = `x বড় (৫ যোগ ৩)`.
+
+```c
+%left MULT DIV MOD
+```
+**Purpose:** Multiplication, division, modulo. Higher than add/subtract. `২ যোগ ৩ গুণ ৪` = `২ যোগ (৩ গুণ ৪)` = 14.
+
+```c
+%right NOT
+```
+**Purpose:** Logical NOT (`!`/নয়) — right-associative unary operator. Higher than arithmetic.
+
+```c
+%right UMINUS
+```
+**Purpose:** Unary minus (`-৫`). This is a **pseudo-token** — `UMINUS` never appears in input. It's used with `%prec UMINUS` in the grammar to give the rule `MINUS expression` higher precedence than binary `MINUS`.
+
+Without this, `-২ গুণ ৩` would be ambiguous: `(-২) গুণ ৩` or `-(২ গুণ ৩)`?
+With `%prec UMINUS`, the unary minus binds tighter: `(-২) গুণ ৩` = -6.
+
+```c
+%left FROM
+```
+**Purpose:** The `থেকে` (from) keyword used in for-loop ranges. Given highest precedence to bind tightly.
+
+---
+
+### Duplicate Token Declarations
+
+```c
+%token PLUS MINUS MULT DIV MOD
+%token AND OR NOT
+%token ASSIGN EQUAL NOT_EQUAL
+%token GREATER LESS GREATER_EQUAL LESS_EQUAL
+```
+**Purpose:** These re-declare the operator tokens that were already given precedence above. Bison allows this — the `%left`/`%right`/`%nonassoc` lines already declare them as tokens AND set their precedence. These extra `%token` lines are redundant but harmless (Bison treats them as no-ops for already-declared tokens). They exist for documentation clarity — grouping all operators together.
+
+---
+
+## Section 2: Grammar Rules (`%%`)
+
+```c
+%%
+```
+**Purpose:** Marks the beginning of the grammar rules section. This is the heart of the parser — it defines what constitutes a valid program.
+
+**How Bison grammar works:**
+- Each rule has a name (non-terminal) on the left of `:` and a pattern on the right
+- `|` means "or" (alternative production)
+- `;` ends the rule
+- `{ ... }` contains C code (semantic actions) executed when the rule matches
+- `$1`, `$2`, etc. refer to the values of the 1st, 2nd, etc. symbol in the pattern
+- `$$` is the value of the left-hand side (not used in our syntax checker)
+
+---
+
+### Program Structure
+
+```c
+program:
+    PROGRAM_START newlines statements PROGRAM_END optional_newlines
+    {
+        printf("✓ Program parsed successfully!\n");
+    }
+    | PROGRAM_START statements PROGRAM_END optional_newlines
+    {
+        printf("✓ Program parsed successfully!\n");
+    }
+    ;
+```
+**Purpose:** The **start rule** — the first rule in the grammar. Bison tries to reduce the entire input to this rule.
+
+A valid program is:
+- `শুরু_প্রোগ্রাম` → some newlines → statements → `শেষ_প্রোগ্রাম` → optional trailing newlines
+- OR: `শুরু_প্রোগ্রাম` → statements (no newlines after start) → `শেষ_প্রোগ্রাম` → optional trailing newlines
+
+Two alternatives because there may or may not be blank lines after `শুরু_প্রোগ্রাম`.
+
+When the entire program is successfully parsed, it prints the success message.
+
+---
+
+### Newline Helper Rules
+
+```c
+newlines:
+    NEWLINE
+    | newlines NEWLINE
+    ;
+```
+**Purpose:** Matches **one or more** NEWLINE tokens. This is a recursive definition:
+- Base case: a single NEWLINE
+- Recursive case: `newlines` followed by another NEWLINE
+
+Used after `PROGRAM_START` to consume the newline(s) after `শুরু_প্রোগ্রাম`.
+
+```c
+optional_newlines:
+    /* empty */
+    | optional_newlines NEWLINE
+    ;
+```
+**Purpose:** Matches **zero or more** NEWLINE tokens. The `/* empty */` alternative means "match nothing" — this allows the rule to succeed even when there are no newlines. Used after `PROGRAM_END` to consume any trailing newlines at the end of the file.
+
+---
+
+### Statements
+
+```c
+statements:
+    /* empty */
+    | statements statement
+    | statements NEWLINE
+    ;
+```
+**Purpose:** Matches **zero or more** statements, possibly separated by blank lines.
+
+- `/* empty */` — base case: zero statements (valid — a program can have no body)
+- `statements statement` — recursive: more statements followed by one statement
+- `statements NEWLINE` — allows blank lines between statements (a bare NEWLINE that isn't part of a statement)
+
+This is **left-recursive** (`statements` appears on the left of the recursive case). Bison handles left recursion efficiently (constant stack space). Right recursion would use O(n) stack.
+
+```c
+statement:
+    simple_statement NEWLINE
+    | compound_statement
+    ;
+```
+**Purpose:** A statement is either:
+- A **simple statement** followed by a NEWLINE (e.g., `সংখ্যা x = ৫।\n`)
+- A **compound statement** (e.g., `যদি ... ঃ` — which handles its own newlines internally via `suite`)
+
+---
+
+### Simple vs Compound Statements
+
+```c
+simple_statement:
+    declaration
+    | assignment
+    | input_statement
+    | print_statement
+    | return_statement
+    | break_statement
+    | continue_statement
+    | increment_statement
+    | decrement_statement
+    | array_declaration
+    | function_call SEMICOLON
+    ;
+```
+**Purpose:** Lists all statement types that end with `।` (SEMICOLON) and are followed by a NEWLINE. Each alternative is a different kind of single-line statement. Note `function_call SEMICOLON` — a standalone function call needs a `।` at the end.
+
+```c
+compound_statement:
+    if_statement
+    | while_statement
+    | for_statement
+    | function_definition
+    ;
+```
+**Purpose:** Statements that contain **blocks** (indented sub-statements). These don't need an explicit NEWLINE after them because the `suite` rule inside handles the block structure.
+
+---
+
+### Declaration
+
+```c
+declaration:
+    type IDENTIFIER SEMICOLON
+    {
+        printf("Declaration: %s\n", $2);
+        free($2);
+    }
+    | type IDENTIFIER ASSIGN expression SEMICOLON
+    {
+        printf("Declaration with assignment: %s\n", $2);
+        free($2);
+    }
+    ;
+```
+**Purpose:** Variable declaration, with or without initialization.
+
+**Form 1:** `type name।`
+- Example: `সংখ্যা বয়স।` (declare integer variable `বয়স`)
+- `$2` is the IDENTIFIER's string value (from `yylval.strval`)
+
+**Form 2:** `type name = expression।`
+- Example: `সংখ্যা বয়স = ২৫।` (declare and initialize)
+- `$2` is the identifier, `$4` would be the expression value (unused here)
+
+**`free($2)`:** Frees the `strdup`'d string from the lexer. Since IDENTIFIER's value was allocated with `strdup()` in the lexer, we must `free()` it to avoid memory leaks.
+
+---
+
+### Type
+
+```c
+type:
+    NUMBER_TYPE
+    | DECIMAL_TYPE
+    | BOOL_TYPE
+    | CHAR_TYPE
+    | STRING_TYPE
+    ;
+```
+**Purpose:** Matches any of the five data type keywords. Used in `declaration` and `array_declaration` rules. No semantic action needed — we just need to know it's a valid type.
+
+---
+
+### Assignment
+
+```c
+assignment:
+    IDENTIFIER ASSIGN expression SEMICOLON
+    {
+        printf("Assignment: %s\n", $1);
+        free($1);
+    }
+    ;
+```
+**Purpose:** Variable assignment (without type — variable already declared).
+- Pattern: `name = expression।`
+- Example: `বয়স = ৩০।`
+- `$1` is the identifier name, `$3` is the expression (unused in syntax checker)
+
+---
+
+### Input Statement
+
+```c
+input_statement:
+    INPUT LPAREN IDENTIFIER RPAREN SEMICOLON
+    {
+        printf("Input statement for: %s\n", $3);
+        free($3);
+    }
+    ;
+```
+**Purpose:** Reading input from the user.
+- Pattern: `নাও(variable_name)।`
+- Example: `নাও(বয়স)।` — takes input and stores in variable `বয়স`
+- `$3` is the identifier (3rd symbol: INPUT=1, LPAREN=2, IDENTIFIER=3)
+
+---
+
+### Print Statement
+
+```c
+print_statement:
+    PRINT expression SEMICOLON
+    {
+        printf("Print statement\n");
+    }
+    ;
+```
+**Purpose:** Output/display statement.
+- Pattern: `দেখাও expression।`
+- Example: `দেখাও "আমার নাম বর্ণমালা"।`
+- Example: `দেখাও বয়স।`
+
+---
+
+### Suite (Block Structure)
+
+```c
+suite:
+    simple_statement NEWLINE
+    | NEWLINE INDENT statements DEDENT
+    ;
+```
+**Purpose:** This is the **critical rule for Python-style indentation**. A `suite` is what comes after a colon (`ঃ`) in compound statements. It can be:
+
+**Form 1: Inline** — a simple statement on the same line
+```
+যদি বয়স বড় ১৮ঃ দেখাও "প্রাপ্তবয়স্ক"।
+```
+Here the suite is `দেখাও "প্রাপ্তবয়স্ক"। NEWLINE`.
+
+**Form 2: Indented block** — multiple statements on following indented lines
+```
+যদি বয়স বড় ১৮ঃ
+    দেখাও "প্রাপ্তবয়স্ক"।
+    দেখাও "ভোট দিতে পারেন"।
+```
+Here the suite is `NEWLINE INDENT [statements] DEDENT`.
+
+The `INDENT` and `DEDENT` tokens come from the lexer's indentation tracking system.
+
+---
+
+### If Statement
+
+```c
+if_statement:
+    IF expression COLON suite %prec LOWER_THAN_ELSE
+    {
+        printf("If statement\n");
+    }
+    | IF expression COLON suite ELSE COLON suite
+    {
+        printf("If-Else statement\n");
+    }
+    ;
+```
+**Purpose:** Conditional statements.
+
+**Form 1: If only** (no else)
+```
+যদি বয়স বড় ১৮ঃ
+    দেখাও "প্রাপ্তবয়স্ক"।
+```
+- `%prec LOWER_THAN_ELSE` — gives this rule lower precedence than ELSE, solving the dangling else problem (explained in the precedence section above)
+
+**Form 2: If-Else**
+```
+যদি বয়স বড় ১৮ঃ
+    দেখাও "প্রাপ্তবয়স্ক"।
+নাহলেঃ
+    দেখাও "নাবালক"।
+```
+- The `ELSE COLON suite` part handles the else branch
+- Note: `নাহলেঃ` looks like one word but is TWO tokens: `নাহলে` (ELSE) + `ঃ` (COLON)
+
+---
+
+### While Statement
+
+```c
+while_statement:
+    WHILE expression COLON suite
+    {
+        printf("While loop\n");
+    }
+    ;
+```
+**Purpose:** While loop.
+- Pattern: `যতক্ষণ condition ঃ suite`
+- Example:
+```
+যতক্ষণ গ ছোট ১০ঃ
+    দেখাও গ।
+    গ বাড়াও।
+```
+
+---
+
+### For Statement
+
+```c
+for_statement:
+    FOR_RANGE LPAREN IDENTIFIER RPAREN expression FROM expression COLON suite
+    {
+        printf("For loop\n");
+        free($3);
+    }
+    ;
+```
+**Purpose:** For (range) loop.
+- Pattern: `ঘুরতে_থাক(variable) start থেকে end ঃ suite`
+- Example:
+```
+ঘুরতে_থাক(গ) ১ থেকে ১০ঃ
+    দেখাও গ।
+```
+- `$3` is the loop variable name (IDENTIFIER, 3rd symbol)
+- `$5` is the start expression, `$7` is the end expression (unused in syntax checker)
+
+---
+
+### Function Definition
+
+```c
+function_definition:
+    FUNCTION IDENTIFIER LPAREN parameter_list RPAREN COLON suite
+    {
+        printf("Function definition: %s\n", $2);
+        free($2);
+    }
+    | FUNCTION IDENTIFIER LPAREN RPAREN COLON suite
+    {
+        printf("Function definition (no params): %s\n", $2);
+        free($2);
+    }
+    ;
+```
+**Purpose:** Function definition with or without parameters.
+
+**Form 1: With parameters**
+```
+প্রক্রিয়া যোগফল_বের_করো(ক, খ)ঃ
+    ফিরিয়ে_দাও ক যোগ খ।
+```
+
+**Form 2: Without parameters**
+```
+প্রক্রিয়া অভিবাদন()ঃ
+    দেখাও "নমস্কার!"।
+```
+
+---
+
+### Parameter List
+
+```c
+parameter_list:
+    IDENTIFIER
+    {
+        free($1);
+    }
+    | parameter_list COMMA IDENTIFIER
+    {
+        free($3);
+    }
+    ;
+```
+**Purpose:** A comma-separated list of parameter names. Left-recursive.
+- `IDENTIFIER` — single parameter: `(ক)`
+- `parameter_list COMMA IDENTIFIER` — multiple: `(ক, খ, গ)`
+
+Each identifier is freed after use to prevent memory leaks.
+
+---
+
+### Function Call
+
+```c
+function_call:
+    IDENTIFIER LPAREN argument_list RPAREN
+    {
+        printf("Function call: %s\n", $1);
+        free($1);
+    }
+    | IDENTIFIER LPAREN RPAREN
+    {
+        printf("Function call (no args): %s\n", $1);
+        free($1);
+    }
+    ;
+```
+**Purpose:** Calling a function with or without arguments.
+
+- With args: `যোগফল_বের_করো(ক, খ)`
+- Without args: `অভিবাদন()`
+
+Note: `function_call` appears both in `simple_statement` (with SEMICOLON) and in `primary_expression` (without SEMICOLON). This allows:
+- Standalone call: `অভিবাদন()।` (statement)
+- In expression: `উত্তর = যোগফল_বের_করো(৫, ৩)।` (expression)
+
+---
+
+### Argument List
+
+```c
+argument_list:
+    expression
+    | argument_list COMMA expression
+    ;
+```
+**Purpose:** A comma-separated list of expressions passed as arguments to a function.
+- `expression` — single argument: `ফাংশন(৫)`
+- `argument_list COMMA expression` — multiple: `ফাংশন(৫, ৩, ১)`
+
+No semantic action needed — in our syntax checker, we just validate the structure.
+
+---
+
+### Return Statement
+
+```c
+return_statement:
+    RETURN expression SEMICOLON
+    {
+        printf("Return statement\n");
+    }
+    ;
+```
+**Purpose:** Return a value from a function.
+- Pattern: `ফিরিয়ে_দাও expression।`
+- Example: `ফিরিয়ে_দাও ক যোগ খ।`
+
+---
+
+### Break Statement
+
+```c
+break_statement:
+    BREAK SEMICOLON
+    {
+        printf("Break statement\n");
+    }
+    ;
+```
+**Purpose:** Break out of a loop.
+- Pattern: `থামো।`
+- Used inside `যতক্ষণ` or `ঘুরতে_থাক` loops.
+
+---
+
+### Continue Statement
+
+```c
+continue_statement:
+    CONTINUE SEMICOLON
+    {
+        printf("Continue statement\n");
+    }
+    ;
+```
+**Purpose:** Skip to the next iteration of a loop.
+- Pattern: `চালিয়ে_যাও।`
+
+---
+
+### Increment Statement
+
+```c
+increment_statement:
+    IDENTIFIER INC SEMICOLON
+    {
+        printf("Increment: %s\n", $1);
+        free($1);
+    }
+    ;
+```
+**Purpose:** Increment a variable by 1.
+- Pattern: `variable বাড়াও।` or `variable ++।`
+- Example: `গ বাড়াও।` (গ = গ + ১)
+
+---
+
+### Decrement Statement
+
+```c
+decrement_statement:
+    IDENTIFIER DEC SEMICOLON
+    {
+        printf("Decrement: %s\n", $1);
+        free($1);
+    }
+    ;
+```
+**Purpose:** Decrement a variable by 1.
+- Pattern: `variable কমাও।` or `variable --।`
+- Example: `গ কমাও।` (গ = গ - ১)
+
+---
+
+### Array Declaration
+
+```c
+array_declaration:
+    ARRAY LPAREN type RPAREN IDENTIFIER LBRACKET INT_LITERAL RBRACKET SEMICOLON
+    {
+        printf("Array declaration: %s[%d]\n", $5, $7);
+        free($5);
+    }
+    | ARRAY LPAREN type RPAREN IDENTIFIER LBRACKET INT_LITERAL RBRACKET ASSIGN LBRACKET array_elements RBRACKET SEMICOLON
+    {
+        printf("Array declaration with initialization: %s[%d]\n", $5, $7);
+        free($5);
+    }
+    ;
+```
+**Purpose:** Array declaration with or without initialization.
+
+**Form 1: Declaration only**
+```
+ধারক(সংখ্যা) ধ[৫]।
+```
+- `ধারক` = ARRAY, `(সংখ্যা)` = LPAREN type RPAREN, `ধ` = IDENTIFIER, `[৫]` = LBRACKET INT_LITERAL RBRACKET
+- `$5` = array name (IDENTIFIER, 5th symbol), `$7` = size (INT_LITERAL, 7th symbol)
+
+**Form 2: With initialization**
+```
+ধারক(সংখ্যা) ধ[৫] = [১, ২, ৩, ৪, ৫]।
+```
+
+---
+
+### Array Elements
+
+```c
+array_elements:
+    expression
+    | array_elements COMMA expression
+    ;
+```
+**Purpose:** Comma-separated list of expressions inside array initialization brackets `[১, ২, ৩]`.
+
+---
+
+### Array Access
+
+```c
+array_access:
+    IDENTIFIER LBRACKET expression RBRACKET
+    {
+        printf("Array access: %s\n", $1);
+        free($1);
+    }
+    ;
+```
+**Purpose:** Accessing an element of an array by index.
+- Pattern: `array_name[expression]`
+- Example: `ধ[০]` — access the first element of array `ধ`
+- The index can be any expression, not just a literal: `ধ[গ যোগ ১]`
+
+---
+
+### Expression
+
+```c
+expression:
+    primary_expression
+    | expression PLUS expression
+    | expression MINUS expression
+    | expression MULT expression
+    | expression DIV expression
+    | expression MOD expression
+    | expression AND expression
+    | expression OR expression
+    | expression EQUAL expression
+    | expression NOT_EQUAL expression
+    | expression GREATER expression
+    | expression LESS expression
+    | expression GREATER_EQUAL expression
+    | expression LESS_EQUAL expression
+    | expression FROM expression
+    | NOT expression
+    | MINUS expression %prec UMINUS
+    ;
+```
+**Purpose:** The expression grammar — defines all binary and unary operations.
+
+**Why no `{ $$ = $1 + $3; }`?**
+Because we're a **syntax checker only** (Stage 1). We validate that `৫ যোগ ৩` is a valid expression, but we don't compute 8. To make this an interpreter, you'd add semantic actions:
+```c
+| expression PLUS expression   { $$ = $1 + $3; }
+```
+
+**How ambiguity is resolved:**
+Without the `%left`/`%right` declarations, `২ যোগ ৩ গুণ ৪` would be ambiguous (is it `(2+3)*4` or `2+(3*4)`?). The precedence declarations tell Bison that `MULT` has higher precedence than `PLUS`, so it correctly parses as `2+(3*4) = 14`.
+
+**`MINUS expression %prec UMINUS`:**
+- This handles unary minus (e.g., `-৫`)
+- `%prec UMINUS` tells Bison to use the precedence of `UMINUS` (very high) for this rule, not the precedence of `MINUS` (lower, same as `PLUS`)
+- Without this, `-২ গুণ ৩` might be misinterpreted
+
+**`expression FROM expression`:**
+- Used in for-loop ranges: `১ থেকে ১০`
+- Parsed as an expression so the start/end can be arbitrary expressions
+
+---
+
+### Primary Expression
+
+```c
+primary_expression:
+    INT_LITERAL
+    | FLOAT_LITERAL
+    | STRING_LITERAL
+    {
+        free($1);
+    }
+    | CHAR_LITERAL
+    {
+        free($1);
+    }
+    | IDENTIFIER
+    {
+        free($1);
+    }
+    | BOOL_TRUE
+    | BOOL_FALSE
+    | array_access
+    | function_call
+    | math_function
+    | LPAREN expression RPAREN
+    ;
+```
+**Purpose:** The "atoms" of expressions — the smallest units that can't be broken down further.
+
+| Alternative | Example | Notes |
+|------------|---------|-------|
+| `INT_LITERAL` | `৫`, `১৮` | Integer number |
+| `FLOAT_LITERAL` | `৩.১৪` | Decimal number |
+| `STRING_LITERAL` | `"হ্যালো"` | String (freed to prevent leak) |
+| `CHAR_LITERAL` | `'ক'` | Character (freed) |
+| `IDENTIFIER` | `বয়স` | Variable name (freed) |
+| `BOOL_TRUE` | `সত্য` | Boolean true |
+| `BOOL_FALSE` | `মিথ্যা` | Boolean false |
+| `array_access` | `ধ[০]` | Array element |
+| `function_call` | `যোগ(ক, খ)` | Function return value |
+| `math_function` | `বর্গমূল(৯)` | Math function result |
+| `LPAREN expression RPAREN` | `(৫ যোগ ৩)` | Grouped/parenthesized expression |
+
+**`LPAREN expression RPAREN`** — allows parenthesized grouping to override precedence: `(২ যোগ ৩) গুণ ৪` = 20 instead of 14.
+
+---
+
+### Math Functions
+
+```c
+math_function:
+    POW LPAREN expression COMMA expression RPAREN
+    | SQRT LPAREN expression RPAREN
+    | FLOOR LPAREN expression RPAREN
+    | CEIL LPAREN expression RPAREN
+    | ABS LPAREN expression RPAREN
+    ;
+```
+**Purpose:** Built-in math function calls. Unlike user-defined function calls, these have a fixed number of arguments and are recognized by the parser directly.
+
+| Rule | Bangla | Usage | Math |
+|------|--------|-------|------|
+| `POW(expr, expr)` | `শক্তি(২, ৩)` | 2³ | `pow(2,3) = 8` |
+| `SQRT(expr)` | `বর্গমূল(৯)` | √9 | `sqrt(9) = 3` |
+| `FLOOR(expr)` | `ফ্লোর(৩.৭)` | ⌊3.7⌋ | `floor(3.7) = 3` |
+| `CEIL(expr)` | `সিল(৩.২)` | ⌈3.2⌉ | `ceil(3.2) = 4` |
+| `ABS(expr)` | `পরম(-৫)` | \|-5\| | `abs(-5) = 5` |
+
+---
+
+## Section 3: User Code (`%%`)
+
+```c
+%%
+```
+**Purpose:** Marks the beginning of the user code section. Everything after this is compiled as regular C code.
+
+---
+
+### Error Handler
+
+```c
+void yyerror(const char *s) {
+    fprintf(stderr, "✗ Syntax error at line %d: %s\n", yylineno, s);
+}
+```
+**Purpose:** Called by Bison whenever the parser encounters a syntax error (the token stream doesn't match any grammar rule).
+- `s` — error message (usually "syntax error")
+- `yylineno` — current line number from the lexer
+- `fprintf(stderr, ...)` — prints to standard error (not standard output)
+
+**Example output:** `✗ Syntax error at line 18: syntax error`
+
+---
+
+### Unicode Normalization Function
+
+```c
+FILE* normalize_input(FILE *input) {
+```
+**Purpose:** Preprocesses the input file to normalize **precomposed Bengali characters** to their **decomposed form**. This function reads the entire file, transforms problematic characters, and returns a temporary file pointer.
+
+**Why is this needed?**
+
+Bengali has some characters that can be encoded in **two ways** in Unicode:
+
+| Character | Precomposed (1 codepoint) | Decomposed (2 codepoints) |
+|-----------|--------------------------|---------------------------|
+| য় | U+09DF (E0 A7 9F) | য U+09AF + ় U+09BC (E0 A6 AF + E0 A6 BC) |
+| ড় | U+09DC (E0 A7 9C) | ড U+09A1 + ় U+09BC (E0 A6 A1 + E0 A6 BC) |
+| ঢ় | U+09DD (E0 A7 9D) | ঢ U+09A2 + ় U+09BC (E0 A6 A2 + E0 A6 BC) |
+
+Different text editors may save the same character in different forms. Our lexer keywords use the **decomposed** form, so if the input file has the **precomposed** form, the lexer won't match them. This function converts all precomposed forms to decomposed.
+
+---
+
+```c
+    fseek(input, 0, SEEK_END);
+    long fsize = ftell(input);
+    fseek(input, 0, SEEK_SET);
+```
+**Purpose:** Determines the file size.
+1. `fseek(input, 0, SEEK_END)` — move to end of file
+2. `ftell(input)` — get current position (= file size in bytes)
+3. `fseek(input, 0, SEEK_SET)` — move back to beginning
+
+---
+
+```c
+    unsigned char *buf = malloc(fsize + 1);
+    long actual = fread(buf, 1, fsize, input);
+    fclose(input);
+```
+**Purpose:**
+- Allocate buffer for the entire file
+- Read the file into memory. `actual` = number of bytes actually read (may differ from `fsize` on Windows due to text mode line endings)
+- Close the original file (we'll create a new temp file with normalized content)
+
+**Why `actual` instead of `fsize`?** On Windows, `ftell()` may report a larger size than `fread()` returns because `\r\n` in text mode is read as `\n`. Using `actual` ensures we don't process garbage bytes.
+
+---
+
+```c
+    unsigned char *out = malloc(actual * 2 + 1);
+    long olen = 0;
+```
+**Purpose:** Allocate output buffer. `actual * 2` because in the worst case, every 3-byte precomposed character becomes 6 bytes (decomposed = 2 × 3 bytes). `olen` tracks the current position in the output buffer.
+
+---
+
+```c
+    for (long i = 0; i < actual; ) {
+```
+**Purpose:** Loop through every byte of the input. `i` is NOT incremented in the `for` statement — it's incremented inside the loop (by 1 for regular bytes, by 3 for Bengali characters).
+
+---
+
+```c
+        if (i + 2 < fsize && buf[i] == 0xE0 && buf[i+1] == 0xA7 && buf[i+2] == 0x9F) {
+            out[olen++] = 0xE0; out[olen++] = 0xA6; out[olen++] = 0xAF;  /* য */
+            out[olen++] = 0xE0; out[olen++] = 0xA6; out[olen++] = 0xBC;  /* ় */
+            i += 3;
+        }
+```
+**Purpose:** Detects precomposed `য়` (U+09DF = bytes E0 A7 9F) and replaces it with decomposed `য` + `়` (E0 A6 AF + E0 A6 BC). Advances by 3 bytes (the size of one UTF-8 Bengali character).
+
+---
+
+```c
+        else if (i + 2 < fsize && buf[i] == 0xE0 && buf[i+1] == 0xA7 && buf[i+2] == 0x9C) {
+            out[olen++] = 0xE0; out[olen++] = 0xA6; out[olen++] = 0xA1;  /* ড */
+            out[olen++] = 0xE0; out[olen++] = 0xA6; out[olen++] = 0xBC;  /* ় */
+            i += 3;
+        }
+```
+**Purpose:** Same for `ড়` (U+09DC → ড + ়).
+
+---
+
+```c
+        else if (i + 2 < fsize && buf[i] == 0xE0 && buf[i+1] == 0xA7 && buf[i+2] == 0x9D) {
+            out[olen++] = 0xE0; out[olen++] = 0xA6; out[olen++] = 0xA2;  /* ঢ */
+            out[olen++] = 0xE0; out[olen++] = 0xA6; out[olen++] = 0xBC;  /* ় */
+            i += 3;
+        }
+```
+**Purpose:** Same for `ঢ়` (U+09DD → ঢ + ়).
+
+---
+
+```c
+        else {
+            out[olen++] = buf[i++];
+        }
+```
+**Purpose:** For all other bytes (ASCII, non-problematic Bengali chars, etc.), copy as-is.
+
+---
+
+```c
+    free(buf);
+```
+**Purpose:** Free the input buffer — we don't need it anymore.
+
+---
+
+```c
+    FILE *tmp = tmpfile();
+    fwrite(out, 1, olen, tmp);
+    fseek(tmp, 0, SEEK_SET);
+    free(out);
+    
+    return tmp;
+```
+**Purpose:**
+1. `tmpfile()` — creates an anonymous temporary file (automatically deleted when closed or program exits)
+2. `fwrite(out, 1, olen, tmp)` — writes the normalized content to the temp file
+3. `fseek(tmp, 0, SEEK_SET)` — rewinds to the beginning so the lexer can read from the start
+4. `free(out)` — frees the output buffer
+5. Returns the temp file pointer — caller sets `yyin = tmp`
+
+---
+
+### Main Function
+
+```c
+int main(int argc, char *argv[]) {
+```
+**Purpose:** Program entry point. `argc` = number of command-line arguments, `argv` = array of argument strings.
+
+---
+
+```c
+    if (argc < 2) {
+        printf("Usage: %s <input_file>\n", argv[0]);
+        return 1;
+    }
+```
+**Purpose:** Check that the user provided an input file name. `argv[0]` is the program name (e.g., `barnomala`), `argv[1]` would be the input file. If no file is provided, print usage and exit with error code 1.
+
+---
+
+```c
+    FILE *fp = fopen(argv[1], "r");
+    if (!fp) {
+        fprintf(stderr, "Error: Cannot open file '%s'\n", argv[1]);
+        return 1;
+    }
+```
+**Purpose:** Open the input `.bn.txt` file for reading. If the file doesn't exist or can't be opened, print an error and exit.
+
+---
+
+```c
+    yyin = normalize_input(fp);
+```
+**Purpose:** Normalize the Unicode in the input file and set `yyin` (the lexer's input source) to the normalized temporary file. Note: `fp` is closed inside `normalize_input()`, so we don't close it here.
+
+---
+
+```c
+    init_indent();
+```
+**Purpose:** Initialize the indentation tracking system in the lexer (reset stack, counters, paren depth).
+
+---
+
+```c
+    printf("=== Parsing Bangla Program ===\n\n");
+```
+**Purpose:** Print a header message before parsing begins.
+
+---
+
+```c
+    int result = yyparse();
+```
+**Purpose:** **Start parsing!** `yyparse()` is the Bison-generated parser function. It:
+1. Calls `yylex()` repeatedly to get tokens
+2. Matches tokens against grammar rules
+3. Executes semantic actions (our `printf` messages)
+4. Returns 0 on success, 1 on syntax error
+
+---
+
+```c
+    fclose(yyin);
+```
+**Purpose:** Close the temporary file created by `normalize_input()`.
+
+---
+
+```c
+    if (result == 0) {
+        printf("\n=== Parsing Complete ===\n");
+        return 0;
+    } else {
+        printf("\n=== Parsing Failed ===\n");
+        return 1;
+    }
+}
+```
+**Purpose:** Print final status based on parse result:
+- `result == 0` → parsing succeeded → exit code 0 (success)
+- `result != 0` → syntax error → exit code 1 (failure)
+
+---
+
+## How Everything Fits Together
+
+```
+Source File (.bn.txt)
+        │
+        ▼
+┌─────────────────┐
+│  normalize_input │  ← Fixes Unicode encoding issues
+│   (bparser.y)    │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│   Lexer (Flex)   │  ← Reads characters, outputs tokens
+│   (blexer.l)     │     (IF, IDENTIFIER, INT_LITERAL, INDENT, DEDENT, ...)
+└────────┬────────┘
+         │  tokens
+         ▼
+┌─────────────────┐
+│  Parser (Bison)  │  ← Checks token sequence against grammar rules
+│  (bparser.y)     │     Prints messages for each recognized construct
+└────────┬────────┘
+         │
+         ▼
+   "✓ Program parsed successfully!"
+   or "✗ Syntax error at line N"
+```
+
+---
+
+## The 2 Shift/Reduce Conflicts
+
+When you compile, Bison reports: `bparser.y: warning: 2 shift/reduce conflicts`
+
+These come from the **dangling else** ambiguity. They are **expected** and correctly resolved by the `%nonassoc LOWER_THAN_ELSE` / `%nonassoc ELSE` precedence declarations. Bison chooses to **shift** (associate the `নাহলে` with the nearest `যদি`), which is the correct behavior.
+
+You can add `%expect 2` to the Bison declarations to suppress this warning:
+```
+%expect 2
+```
+This tells Bison: "I know there are 2 conflicts and I'm okay with it."
+
+---
+
+## Summary
+
+| Component | What it does |
+|-----------|-------------|
+| `%union` | Defines value types tokens can carry |
+| `%token` | Declares token names (from the lexer) |
+| `%left/%right/%nonassoc` | Sets operator precedence and associativity |
+| Grammar rules | Defines what constitutes valid syntax |
+| `suite` | Handles Python-style indentation blocks |
+| `%prec LOWER_THAN_ELSE` | Resolves the dangling else ambiguity |
+| `normalize_input()` | Fixes Unicode encoding mismatches |
+| `main()` | Opens file → normalizes → initializes → parses |
+| `yyerror()` | Reports syntax errors with line numbers |
