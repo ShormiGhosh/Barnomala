@@ -1,4 +1,4 @@
-# বর্ণমালা (Barnomala) — Lexer Explanation (`blexer.l`)
+`# বর্ণমালা (Barnomala) — Lexer Explanation (`blexer.l`)
 
 This document explains **every line** of the `blexer.l` file — the lexical analyzer (lexer/scanner) for the Bangla programming language.
 

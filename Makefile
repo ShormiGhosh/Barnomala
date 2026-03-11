@@ -3,7 +3,7 @@
 # Compiler and tools
 LEX = flex
 YACC = bison
-CC = gcc
+CC = /mingw64/bin/gcc
 CFLAGS = -Wall -Wno-unused-function
 
 # Target executable
@@ -17,6 +17,8 @@ YACC_SOURCE = bparser.y
 LEX_OUTPUT = lex.yy.c
 YACC_OUTPUT = bparser.tab.c
 YACC_HEADER = bparser.tab.h
+SYMTABLE_SRC = symtable.c
+SYMTABLE_HDR = symtable.h
 
 # Default target
 all: $(TARGET)
@@ -29,9 +31,9 @@ $(YACC_OUTPUT) $(YACC_HEADER): $(YACC_SOURCE)
 $(LEX_OUTPUT): $(LEX_SOURCE) $(YACC_HEADER)
 	$(LEX) $(LEX_SOURCE)
 
-# Compile the lexer and parser together
-$(TARGET): $(LEX_OUTPUT) $(YACC_OUTPUT)
-	$(CC) $(CFLAGS) $(LEX_OUTPUT) $(YACC_OUTPUT) -o $(TARGET)
+# Compile the lexer, parser, and symbol table together
+$(TARGET): $(LEX_OUTPUT) $(YACC_OUTPUT) $(SYMTABLE_SRC) $(SYMTABLE_HDR)
+	$(CC) $(CFLAGS) $(LEX_OUTPUT) $(YACC_OUTPUT) $(SYMTABLE_SRC) -o $(TARGET)
 	@echo "✓ Compilation successful! Executable: $(TARGET)"
 
 # Run the compiler on input file
@@ -51,7 +53,7 @@ test-simple: $(TARGET)
 
 # Clean generated files
 clean:
-	rm -f $(LEX_OUTPUT) $(YACC_OUTPUT) $(YACC_HEADER) $(TARGET) $(TARGET).exe $(OUTPUT)
+	rm -f $(LEX_OUTPUT) $(YACC_OUTPUT) $(YACC_HEADER) $(TARGET) $(TARGET).exe $(OUTPUT) test_output.txt
 	@echo "✓ Cleaned all generated files"
 
 # Rebuild everything

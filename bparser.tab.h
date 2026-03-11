@@ -44,6 +44,12 @@
 #if YYDEBUG
 extern int yydebug;
 #endif
+/* "%code requires" blocks.  */
+#line 34 "bparser.y"
+
+#include "symtable.h"
+
+#line 53 "bparser.tab.h"
 
 /* Token kinds.  */
 #ifndef YYTOKENTYPE
@@ -123,13 +129,15 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 13 "bparser.y"
+#line 38 "bparser.y"
 
-    int intval;
+    int    intval;
     double floatval;
-    char *strval;
+    char  *strval;
+    Value   val;    /* runtime value  — used by expression rules */
+    VarType vtype;  /* declared type  — used by the 'type' rule   */
 
-#line 133 "bparser.tab.h"
+#line 141 "bparser.tab.h"
 
 };
 typedef union YYSTYPE YYSTYPE;

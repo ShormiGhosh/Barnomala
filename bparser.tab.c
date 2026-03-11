@@ -72,6 +72,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
+#include "symtable.h"   /* needed here so Value is visible in this prologue */
+
+/* Op-code constants for eval_binop */
+#define OP_PLUS  1
+#define OP_MINUS 2
+#define OP_MULT  3
+#define OP_DIV   4
+#define OP_MOD   5
+#define OP_AND   6
+#define OP_OR    7
+#define OP_EQ    8
+#define OP_NEQ   9
+#define OP_GT   10
+#define OP_LT   11
+#define OP_GTE  12
+#define OP_LTE  13
 
 void yyerror(const char *s);
 extern int yylex();
@@ -79,7 +96,10 @@ extern int yylineno;
 extern FILE *yyin;
 extern void init_indent();
 
-#line 83 "bparser.tab.c"
+/* Forward declaration — defined after the second %% */
+static Value eval_binop(Value a, int op, Value b);
+
+#line 103 "bparser.tab.c"
 
 # ifndef YY_CAST
 #  ifdef __cplusplus
@@ -594,16 +614,16 @@ static const yytype_int8 yytranslate[] =
 /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_int16 yyrline[] =
 {
-       0,    59,    59,    63,    70,    71,    74,    76,    79,    81,
-      82,    86,    87,    91,    92,    93,    94,    95,    96,    97,
-      98,    99,   100,   101,   105,   106,   107,   108,   112,   117,
-     125,   126,   127,   128,   129,   133,   141,   149,   156,   157,
-     161,   165,   172,   179,   187,   192,   200,   204,   211,   216,
-     224,   225,   229,   236,   243,   250,   258,   266,   271,   279,
-     280,   284,   292,   293,   294,   295,   296,   297,   298,   299,
-     300,   301,   302,   303,   304,   305,   306,   307,   308,   312,
-     313,   314,   318,   322,   326,   327,   328,   329,   330,   331,
-     335,   336,   337,   338,   339
+       0,    90,    90,    94,   101,   102,   105,   107,   110,   112,
+     113,   117,   118,   122,   123,   124,   125,   126,   127,   128,
+     129,   130,   131,   132,   136,   137,   138,   139,   143,   148,
+     157,   158,   159,   160,   161,   165,   174,   213,   222,   223,
+     227,   231,   238,   245,   256,   260,   267,   271,   278,   283,
+     291,   292,   296,   303,   310,   317,   332,   347,   352,   359,
+     360,   364,   373,   374,   375,   376,   377,   378,   379,   380,
+     381,   382,   383,   384,   385,   386,   387,   388,   397,   406,
+     407,   408,   409,   410,   424,   425,   426,   427,   428,   429,
+     433,   440,   446,   452,   458
 };
 #endif
 
@@ -1397,245 +1417,570 @@ yyreduce:
   switch (yyn)
     {
   case 2: /* program: PROGRAM_START newlines statements PROGRAM_END optional_newlines  */
-#line 60 "bparser.y"
+#line 91 "bparser.y"
     {
         printf("✓ Program parsed successfully!\n");
     }
-#line 1405 "bparser.tab.c"
+#line 1425 "bparser.tab.c"
     break;
 
   case 3: /* program: PROGRAM_START statements PROGRAM_END optional_newlines  */
-#line 64 "bparser.y"
+#line 95 "bparser.y"
     {
         printf("✓ Program parsed successfully!\n");
     }
-#line 1413 "bparser.tab.c"
+#line 1433 "bparser.tab.c"
     break;
 
   case 28: /* declaration: type IDENTIFIER SEMICOLON  */
-#line 113 "bparser.y"
+#line 144 "bparser.y"
     {
-        printf("Declaration: %s\n", (yyvsp[-1].strval));
+        symtable_declare((yyvsp[-1].strval), (yyvsp[-2].vtype));
         free((yyvsp[-1].strval));
     }
-#line 1422 "bparser.tab.c"
+#line 1442 "bparser.tab.c"
     break;
 
   case 29: /* declaration: type IDENTIFIER ASSIGN expression SEMICOLON  */
-#line 118 "bparser.y"
+#line 149 "bparser.y"
     {
-        printf("Declaration with assignment: %s\n", (yyvsp[-3].strval));
+        symtable_declare_assign((yyvsp[-3].strval), (yyvsp[-4].vtype), (yyvsp[-1].val));
+        free_value((yyvsp[-1].val));
         free((yyvsp[-3].strval));
     }
-#line 1431 "bparser.tab.c"
+#line 1452 "bparser.tab.c"
+    break;
+
+  case 30: /* type: NUMBER_TYPE  */
+#line 157 "bparser.y"
+                 { (yyval.vtype) = TYPE_NUMBER;  }
+#line 1458 "bparser.tab.c"
+    break;
+
+  case 31: /* type: DECIMAL_TYPE  */
+#line 158 "bparser.y"
+                   { (yyval.vtype) = TYPE_DECIMAL; }
+#line 1464 "bparser.tab.c"
+    break;
+
+  case 32: /* type: BOOL_TYPE  */
+#line 159 "bparser.y"
+                   { (yyval.vtype) = TYPE_BOOL;    }
+#line 1470 "bparser.tab.c"
+    break;
+
+  case 33: /* type: CHAR_TYPE  */
+#line 160 "bparser.y"
+                   { (yyval.vtype) = TYPE_CHAR;    }
+#line 1476 "bparser.tab.c"
+    break;
+
+  case 34: /* type: STRING_TYPE  */
+#line 161 "bparser.y"
+                   { (yyval.vtype) = TYPE_STRING;  }
+#line 1482 "bparser.tab.c"
     break;
 
   case 35: /* assignment: IDENTIFIER ASSIGN expression SEMICOLON  */
-#line 134 "bparser.y"
+#line 166 "bparser.y"
     {
-        printf("Assignment: %s\n", (yyvsp[-3].strval));
+        symtable_assign((yyvsp[-3].strval), (yyvsp[-1].val));
+        free_value((yyvsp[-1].val));
         free((yyvsp[-3].strval));
     }
-#line 1440 "bparser.tab.c"
+#line 1492 "bparser.tab.c"
     break;
 
   case 36: /* input_statement: INPUT LPAREN IDENTIFIER RPAREN SEMICOLON  */
-#line 142 "bparser.y"
+#line 175 "bparser.y"
     {
-        printf("Input statement for: %s\n", (yyvsp[-2].strval));
+        SymbolEntry *e = symtable_lookup((yyvsp[-2].strval));
+        if (!e) {
+            fprintf(stderr, "\u09a4\u09cd\u09b0\u09c1\u099f\u09bf: '%s' \u0998\u09cb\u09b7\u09a3\u09be \u0995\u09b0\u09be \u09b9\u09af\u09bc\u09a8\u09bf\u0964\n", (yyvsp[-2].strval));
+        } else {
+            switch (e->type) {
+                case TYPE_NUMBER: {
+                    int v = 0;
+                    if (scanf("%d", &v) == 1)
+                        symtable_assign((yyvsp[-2].strval), make_int(v));
+                    break;
+                }
+                case TYPE_DECIMAL: {
+                    double v = 0.0;
+                    if (scanf("%lf", &v) == 1)
+                        symtable_assign((yyvsp[-2].strval), make_float(v));
+                    break;
+                }
+                case TYPE_STRING: {
+                    char buf[1024];
+                    if (scanf("%1023s", buf) == 1)
+                        symtable_assign((yyvsp[-2].strval), make_string(buf));
+                    break;
+                }
+                case TYPE_BOOL: {
+                    int v = 0;
+                    if (scanf("%d", &v) == 1)
+                        symtable_assign((yyvsp[-2].strval), make_bool(v));
+                    break;
+                }
+                default: break;
+            }
+        }
         free((yyvsp[-2].strval));
     }
-#line 1449 "bparser.tab.c"
+#line 1532 "bparser.tab.c"
     break;
 
   case 37: /* print_statement: PRINT expression SEMICOLON  */
-#line 150 "bparser.y"
+#line 214 "bparser.y"
     {
-        printf("Print statement\n");
-    }
-#line 1457 "bparser.tab.c"
-    break;
-
-  case 40: /* if_statement: IF expression COLON suite  */
-#line 162 "bparser.y"
-    {
-        printf("If statement\n");
-    }
-#line 1465 "bparser.tab.c"
-    break;
-
-  case 41: /* if_statement: IF expression COLON suite ELSE COLON suite  */
-#line 166 "bparser.y"
-    {
-        printf("If-Else statement\n");
-    }
-#line 1473 "bparser.tab.c"
-    break;
-
-  case 42: /* while_statement: WHILE expression COLON suite  */
-#line 173 "bparser.y"
-    {
-        printf("While loop\n");
-    }
-#line 1481 "bparser.tab.c"
-    break;
-
-  case 43: /* for_statement: FOR_RANGE LPAREN IDENTIFIER RPAREN expression FROM expression COLON suite  */
-#line 180 "bparser.y"
-    {
-        printf("For loop\n");
-        free((yyvsp[-6].strval));
-    }
-#line 1490 "bparser.tab.c"
-    break;
-
-  case 44: /* function_definition: FUNCTION IDENTIFIER LPAREN parameter_list RPAREN COLON suite  */
-#line 188 "bparser.y"
-    {
-        printf("Function definition: %s\n", (yyvsp[-5].strval));
-        free((yyvsp[-5].strval));
-    }
-#line 1499 "bparser.tab.c"
-    break;
-
-  case 45: /* function_definition: FUNCTION IDENTIFIER LPAREN RPAREN COLON suite  */
-#line 193 "bparser.y"
-    {
-        printf("Function definition (no params): %s\n", (yyvsp[-4].strval));
-        free((yyvsp[-4].strval));
-    }
-#line 1508 "bparser.tab.c"
-    break;
-
-  case 46: /* parameter_list: IDENTIFIER  */
-#line 201 "bparser.y"
-    {
-        free((yyvsp[0].strval));
-    }
-#line 1516 "bparser.tab.c"
-    break;
-
-  case 47: /* parameter_list: parameter_list COMMA IDENTIFIER  */
-#line 205 "bparser.y"
-    {
-        free((yyvsp[0].strval));
-    }
-#line 1524 "bparser.tab.c"
-    break;
-
-  case 48: /* function_call: IDENTIFIER LPAREN argument_list RPAREN  */
-#line 212 "bparser.y"
-    {
-        printf("Function call: %s\n", (yyvsp[-3].strval));
-        free((yyvsp[-3].strval));
-    }
-#line 1533 "bparser.tab.c"
-    break;
-
-  case 49: /* function_call: IDENTIFIER LPAREN RPAREN  */
-#line 217 "bparser.y"
-    {
-        printf("Function call (no args): %s\n", (yyvsp[-2].strval));
-        free((yyvsp[-2].strval));
+        print_value((yyvsp[-1].val));
+        printf("\n");
+        free_value((yyvsp[-1].val));
     }
 #line 1542 "bparser.tab.c"
     break;
 
-  case 52: /* return_statement: RETURN expression SEMICOLON  */
-#line 230 "bparser.y"
+  case 40: /* if_statement: IF expression COLON suite  */
+#line 228 "bparser.y"
     {
-        printf("Return statement\n");
+        free_value((yyvsp[-2].val));
     }
 #line 1550 "bparser.tab.c"
     break;
 
-  case 53: /* break_statement: BREAK SEMICOLON  */
-#line 237 "bparser.y"
+  case 41: /* if_statement: IF expression COLON suite ELSE COLON suite  */
+#line 232 "bparser.y"
     {
-        printf("Break statement\n");
+        free_value((yyvsp[-5].val));
     }
 #line 1558 "bparser.tab.c"
     break;
 
-  case 54: /* continue_statement: CONTINUE SEMICOLON  */
-#line 244 "bparser.y"
+  case 42: /* while_statement: WHILE expression COLON suite  */
+#line 239 "bparser.y"
     {
-        printf("Continue statement\n");
+        free_value((yyvsp[-2].val));
     }
 #line 1566 "bparser.tab.c"
     break;
 
-  case 55: /* increment_statement: IDENTIFIER INC SEMICOLON  */
-#line 251 "bparser.y"
+  case 43: /* for_statement: FOR_RANGE LPAREN IDENTIFIER RPAREN expression FROM expression COLON suite  */
+#line 246 "bparser.y"
     {
-        printf("Increment: %s\n", (yyvsp[-2].strval));
-        free((yyvsp[-2].strval));
+        /* auto-declare loop variable if it wasn't declared by the user */
+        if (!symtable_lookup((yyvsp[-6].strval)))
+            symtable_declare((yyvsp[-6].strval), TYPE_NUMBER);
+        free_value((yyvsp[-4].val)); free_value((yyvsp[-2].val));
+        free((yyvsp[-6].strval));
     }
-#line 1575 "bparser.tab.c"
+#line 1578 "bparser.tab.c"
     break;
 
-  case 56: /* decrement_statement: IDENTIFIER DEC SEMICOLON  */
-#line 259 "bparser.y"
+  case 44: /* function_definition: FUNCTION IDENTIFIER LPAREN parameter_list RPAREN COLON suite  */
+#line 257 "bparser.y"
     {
-        printf("Decrement: %s\n", (yyvsp[-2].strval));
-        free((yyvsp[-2].strval));
+        free((yyvsp[-5].strval));
     }
-#line 1584 "bparser.tab.c"
+#line 1586 "bparser.tab.c"
     break;
 
-  case 57: /* array_declaration: ARRAY LPAREN type RPAREN IDENTIFIER LBRACKET INT_LITERAL RBRACKET SEMICOLON  */
-#line 267 "bparser.y"
+  case 45: /* function_definition: FUNCTION IDENTIFIER LPAREN RPAREN COLON suite  */
+#line 261 "bparser.y"
     {
-        printf("Array declaration: %s[%d]\n", (yyvsp[-4].strval), (yyvsp[-2].intval));
         free((yyvsp[-4].strval));
     }
-#line 1593 "bparser.tab.c"
+#line 1594 "bparser.tab.c"
     break;
 
-  case 58: /* array_declaration: ARRAY LPAREN type RPAREN IDENTIFIER LBRACKET INT_LITERAL RBRACKET ASSIGN LBRACKET array_elements RBRACKET SEMICOLON  */
-#line 272 "bparser.y"
+  case 46: /* parameter_list: IDENTIFIER  */
+#line 268 "bparser.y"
     {
-        printf("Array declaration with initialization: %s[%d]\n", (yyvsp[-8].strval), (yyvsp[-6].intval));
-        free((yyvsp[-8].strval));
+        free((yyvsp[0].strval));
     }
 #line 1602 "bparser.tab.c"
     break;
 
-  case 61: /* array_access: IDENTIFIER LBRACKET expression RBRACKET  */
-#line 285 "bparser.y"
-    {
-        printf("Array access: %s\n", (yyvsp[-3].strval));
-        free((yyvsp[-3].strval));
-    }
-#line 1611 "bparser.tab.c"
-    break;
-
-  case 81: /* primary_expression: STRING_LITERAL  */
-#line 315 "bparser.y"
+  case 47: /* parameter_list: parameter_list COMMA IDENTIFIER  */
+#line 272 "bparser.y"
     {
         free((yyvsp[0].strval));
+    }
+#line 1610 "bparser.tab.c"
+    break;
+
+  case 48: /* function_call: IDENTIFIER LPAREN argument_list RPAREN  */
+#line 279 "bparser.y"
+    {
+        free((yyvsp[-3].strval));
+        (yyval.val) = make_unknown();  /* function execution not yet implemented */
     }
 #line 1619 "bparser.tab.c"
     break;
 
-  case 82: /* primary_expression: CHAR_LITERAL  */
-#line 319 "bparser.y"
+  case 49: /* function_call: IDENTIFIER LPAREN RPAREN  */
+#line 284 "bparser.y"
     {
-        free((yyvsp[0].strval));
+        free((yyvsp[-2].strval));
+        (yyval.val) = make_unknown();
     }
-#line 1627 "bparser.tab.c"
+#line 1628 "bparser.tab.c"
+    break;
+
+  case 50: /* argument_list: expression  */
+#line 291 "bparser.y"
+                                     { free_value((yyvsp[0].val)); }
+#line 1634 "bparser.tab.c"
+    break;
+
+  case 51: /* argument_list: argument_list COMMA expression  */
+#line 292 "bparser.y"
+                                     { free_value((yyvsp[0].val)); }
+#line 1640 "bparser.tab.c"
+    break;
+
+  case 52: /* return_statement: RETURN expression SEMICOLON  */
+#line 297 "bparser.y"
+    {
+        free_value((yyvsp[-1].val));
+    }
+#line 1648 "bparser.tab.c"
+    break;
+
+  case 53: /* break_statement: BREAK SEMICOLON  */
+#line 304 "bparser.y"
+    {
+        printf("Break statement\n");
+    }
+#line 1656 "bparser.tab.c"
+    break;
+
+  case 54: /* continue_statement: CONTINUE SEMICOLON  */
+#line 311 "bparser.y"
+    {
+        printf("Continue statement\n");
+    }
+#line 1664 "bparser.tab.c"
+    break;
+
+  case 55: /* increment_statement: IDENTIFIER INC SEMICOLON  */
+#line 318 "bparser.y"
+    {
+        SymbolEntry *e = symtable_lookup((yyvsp[-2].strval));
+        if (!e) {
+            fprintf(stderr, "\u09a4\u09cd\u09b0\u09c1\u099f\u09bf: '%s' \u0998\u09cb\u09b7\u09a3\u09be \u0995\u09b0\u09be \u09b9\u09af\u09bc\u09a8\u09bf\u0964\n", (yyvsp[-2].strval));
+        } else if (e->type == TYPE_NUMBER) {
+            symtable_assign((yyvsp[-2].strval), make_int(e->value.data.intval + 1));
+        } else if (e->type == TYPE_DECIMAL) {
+            symtable_assign((yyvsp[-2].strval), make_float(e->value.data.floatval + 1.0));
+        }
+        free((yyvsp[-2].strval));
+    }
+#line 1680 "bparser.tab.c"
+    break;
+
+  case 56: /* decrement_statement: IDENTIFIER DEC SEMICOLON  */
+#line 333 "bparser.y"
+    {
+        SymbolEntry *e = symtable_lookup((yyvsp[-2].strval));
+        if (!e) {
+            fprintf(stderr, "\u09a4\u09cd\u09b0\u09c1\u099f\u09bf: '%s' \u0998\u09cb\u09b7\u09a3\u09be \u0995\u09b0\u09be \u09b9\u09af\u09bc\u09a8\u09bf\u0964\n", (yyvsp[-2].strval));
+        } else if (e->type == TYPE_NUMBER) {
+            symtable_assign((yyvsp[-2].strval), make_int(e->value.data.intval - 1));
+        } else if (e->type == TYPE_DECIMAL) {
+            symtable_assign((yyvsp[-2].strval), make_float(e->value.data.floatval - 1.0));
+        }
+        free((yyvsp[-2].strval));
+    }
+#line 1696 "bparser.tab.c"
+    break;
+
+  case 57: /* array_declaration: ARRAY LPAREN type RPAREN IDENTIFIER LBRACKET INT_LITERAL RBRACKET SEMICOLON  */
+#line 348 "bparser.y"
+    {
+        /* Arrays not yet backed by runtime storage — parsed only */
+        free((yyvsp[-4].strval));
+    }
+#line 1705 "bparser.tab.c"
+    break;
+
+  case 58: /* array_declaration: ARRAY LPAREN type RPAREN IDENTIFIER LBRACKET INT_LITERAL RBRACKET ASSIGN LBRACKET array_elements RBRACKET SEMICOLON  */
+#line 353 "bparser.y"
+    {
+        free((yyvsp[-8].strval));
+    }
+#line 1713 "bparser.tab.c"
+    break;
+
+  case 59: /* array_elements: expression  */
+#line 359 "bparser.y"
+                                     { free_value((yyvsp[0].val)); }
+#line 1719 "bparser.tab.c"
+    break;
+
+  case 60: /* array_elements: array_elements COMMA expression  */
+#line 360 "bparser.y"
+                                      { free_value((yyvsp[0].val)); }
+#line 1725 "bparser.tab.c"
+    break;
+
+  case 61: /* array_access: IDENTIFIER LBRACKET expression RBRACKET  */
+#line 365 "bparser.y"
+    {
+        free_value((yyvsp[-1].val));
+        free((yyvsp[-3].strval));
+        (yyval.val) = make_unknown();  /* array runtime not yet implemented */
+    }
+#line 1735 "bparser.tab.c"
+    break;
+
+  case 62: /* expression: primary_expression  */
+#line 373 "bparser.y"
+                                          { (yyval.val) = (yyvsp[0].val); }
+#line 1741 "bparser.tab.c"
+    break;
+
+  case 63: /* expression: expression PLUS expression  */
+#line 374 "bparser.y"
+                                          { (yyval.val) = eval_binop((yyvsp[-2].val), OP_PLUS,  (yyvsp[0].val)); }
+#line 1747 "bparser.tab.c"
+    break;
+
+  case 64: /* expression: expression MINUS expression  */
+#line 375 "bparser.y"
+                                          { (yyval.val) = eval_binop((yyvsp[-2].val), OP_MINUS, (yyvsp[0].val)); }
+#line 1753 "bparser.tab.c"
+    break;
+
+  case 65: /* expression: expression MULT expression  */
+#line 376 "bparser.y"
+                                          { (yyval.val) = eval_binop((yyvsp[-2].val), OP_MULT,  (yyvsp[0].val)); }
+#line 1759 "bparser.tab.c"
+    break;
+
+  case 66: /* expression: expression DIV expression  */
+#line 377 "bparser.y"
+                                          { (yyval.val) = eval_binop((yyvsp[-2].val), OP_DIV,   (yyvsp[0].val)); }
+#line 1765 "bparser.tab.c"
+    break;
+
+  case 67: /* expression: expression MOD expression  */
+#line 378 "bparser.y"
+                                          { (yyval.val) = eval_binop((yyvsp[-2].val), OP_MOD,   (yyvsp[0].val)); }
+#line 1771 "bparser.tab.c"
+    break;
+
+  case 68: /* expression: expression AND expression  */
+#line 379 "bparser.y"
+                                          { (yyval.val) = eval_binop((yyvsp[-2].val), OP_AND,   (yyvsp[0].val)); }
+#line 1777 "bparser.tab.c"
+    break;
+
+  case 69: /* expression: expression OR expression  */
+#line 380 "bparser.y"
+                                          { (yyval.val) = eval_binop((yyvsp[-2].val), OP_OR,    (yyvsp[0].val)); }
+#line 1783 "bparser.tab.c"
+    break;
+
+  case 70: /* expression: expression EQUAL expression  */
+#line 381 "bparser.y"
+                                          { (yyval.val) = eval_binop((yyvsp[-2].val), OP_EQ,    (yyvsp[0].val)); }
+#line 1789 "bparser.tab.c"
+    break;
+
+  case 71: /* expression: expression NOT_EQUAL expression  */
+#line 382 "bparser.y"
+                                          { (yyval.val) = eval_binop((yyvsp[-2].val), OP_NEQ,   (yyvsp[0].val)); }
+#line 1795 "bparser.tab.c"
+    break;
+
+  case 72: /* expression: expression GREATER expression  */
+#line 383 "bparser.y"
+                                          { (yyval.val) = eval_binop((yyvsp[-2].val), OP_GT,    (yyvsp[0].val)); }
+#line 1801 "bparser.tab.c"
+    break;
+
+  case 73: /* expression: expression LESS expression  */
+#line 384 "bparser.y"
+                                          { (yyval.val) = eval_binop((yyvsp[-2].val), OP_LT,    (yyvsp[0].val)); }
+#line 1807 "bparser.tab.c"
+    break;
+
+  case 74: /* expression: expression GREATER_EQUAL expression  */
+#line 385 "bparser.y"
+                                          { (yyval.val) = eval_binop((yyvsp[-2].val), OP_GTE,   (yyvsp[0].val)); }
+#line 1813 "bparser.tab.c"
+    break;
+
+  case 75: /* expression: expression LESS_EQUAL expression  */
+#line 386 "bparser.y"
+                                          { (yyval.val) = eval_binop((yyvsp[-2].val), OP_LTE,   (yyvsp[0].val)); }
+#line 1819 "bparser.tab.c"
+    break;
+
+  case 76: /* expression: expression FROM expression  */
+#line 387 "bparser.y"
+                                          { free_value((yyvsp[0].val)); (yyval.val) = (yyvsp[-2].val); }
+#line 1825 "bparser.tab.c"
+    break;
+
+  case 77: /* expression: NOT expression  */
+#line 389 "bparser.y"
+    {
+        int bval;
+        if      ((yyvsp[0].val).type == TYPE_DECIMAL) bval = ((yyvsp[0].val).data.floatval == 0.0) ? 1 : 0;
+        else if ((yyvsp[0].val).type == TYPE_BOOL)    bval = ((yyvsp[0].val).data.intval   == 0)   ? 1 : 0;
+        else                              bval = ((yyvsp[0].val).data.intval   == 0)   ? 1 : 0;
+        free_value((yyvsp[0].val));
+        (yyval.val) = make_bool(bval);
+    }
+#line 1838 "bparser.tab.c"
+    break;
+
+  case 78: /* expression: MINUS expression  */
+#line 398 "bparser.y"
+    {
+        if ((yyvsp[0].val).type == TYPE_DECIMAL) (yyval.val) = make_float(-(yyvsp[0].val).data.floatval);
+        else                         (yyval.val) = make_int  (-(yyvsp[0].val).data.intval);
+        free_value((yyvsp[0].val));
+    }
+#line 1848 "bparser.tab.c"
+    break;
+
+  case 79: /* primary_expression: INT_LITERAL  */
+#line 406 "bparser.y"
+                             { (yyval.val) = make_int((yyvsp[0].intval)); }
+#line 1854 "bparser.tab.c"
+    break;
+
+  case 80: /* primary_expression: FLOAT_LITERAL  */
+#line 407 "bparser.y"
+                             { (yyval.val) = make_float((yyvsp[0].floatval)); }
+#line 1860 "bparser.tab.c"
+    break;
+
+  case 81: /* primary_expression: STRING_LITERAL  */
+#line 408 "bparser.y"
+                             { (yyval.val) = make_string((yyvsp[0].strval)); free((yyvsp[0].strval)); }
+#line 1866 "bparser.tab.c"
+    break;
+
+  case 82: /* primary_expression: CHAR_LITERAL  */
+#line 409 "bparser.y"
+                             { (yyval.val) = make_char((yyvsp[0].strval));   free((yyvsp[0].strval)); }
+#line 1872 "bparser.tab.c"
     break;
 
   case 83: /* primary_expression: IDENTIFIER  */
-#line 323 "bparser.y"
+#line 411 "bparser.y"
     {
+        SymbolEntry *e = symtable_lookup((yyvsp[0].strval));
+        if (!e) {
+            fprintf(stderr, "\u09a4\u09cd\u09b0\u09c1\u099f\u09bf (\u09b2\u09be\u0987\u09a8 %d): '%s' \u0998\u09cb\u09b7\u09a3\u09be \u0995\u09b0\u09be \u09b9\u09af\u09bc\u09a8\u09bf\u0964\n", yylineno, (yyvsp[0].strval));
+            (yyval.val) = make_unknown();
+        } else if (!e->is_initialized) {
+            fprintf(stderr, "\u09b8\u09a4\u09b0\u09cd\u0995\u09a4\u09be (\u09b2\u09be\u0987\u09a8 %d): '%s' \u098f\u09b0 \u09ae\u09be\u09a8 \u09a8\u09bf\u09b0\u09cd\u09a7\u09be\u09b0\u09bf\u09a4 \u09b9\u09af\u09bc\u09a8\u09bf\u0964\n", yylineno, (yyvsp[0].strval));
+            (yyval.val) = make_unknown();
+        } else {
+            (yyval.val) = copy_value(e->value);
+        }
         free((yyvsp[0].strval));
     }
-#line 1635 "bparser.tab.c"
+#line 1890 "bparser.tab.c"
+    break;
+
+  case 84: /* primary_expression: BOOL_TRUE  */
+#line 424 "bparser.y"
+                             { (yyval.val) = make_bool(1); }
+#line 1896 "bparser.tab.c"
+    break;
+
+  case 85: /* primary_expression: BOOL_FALSE  */
+#line 425 "bparser.y"
+                             { (yyval.val) = make_bool(0); }
+#line 1902 "bparser.tab.c"
+    break;
+
+  case 86: /* primary_expression: array_access  */
+#line 426 "bparser.y"
+                             { (yyval.val) = (yyvsp[0].val); }
+#line 1908 "bparser.tab.c"
+    break;
+
+  case 87: /* primary_expression: function_call  */
+#line 427 "bparser.y"
+                             { (yyval.val) = (yyvsp[0].val); }
+#line 1914 "bparser.tab.c"
+    break;
+
+  case 88: /* primary_expression: math_function  */
+#line 428 "bparser.y"
+                             { (yyval.val) = (yyvsp[0].val); }
+#line 1920 "bparser.tab.c"
+    break;
+
+  case 89: /* primary_expression: LPAREN expression RPAREN  */
+#line 429 "bparser.y"
+                               { (yyval.val) = (yyvsp[-1].val); }
+#line 1926 "bparser.tab.c"
+    break;
+
+  case 90: /* math_function: POW LPAREN expression COMMA expression RPAREN  */
+#line 434 "bparser.y"
+    {
+        double base = ((yyvsp[-3].val).type == TYPE_DECIMAL) ? (yyvsp[-3].val).data.floatval : (double)(yyvsp[-3].val).data.intval;
+        double exp  = ((yyvsp[-1].val).type == TYPE_DECIMAL) ? (yyvsp[-1].val).data.floatval : (double)(yyvsp[-1].val).data.intval;
+        free_value((yyvsp[-3].val)); free_value((yyvsp[-1].val));
+        (yyval.val) = make_float(pow(base, exp));
+    }
+#line 1937 "bparser.tab.c"
+    break;
+
+  case 91: /* math_function: SQRT LPAREN expression RPAREN  */
+#line 441 "bparser.y"
+    {
+        double v = ((yyvsp[-1].val).type == TYPE_DECIMAL) ? (yyvsp[-1].val).data.floatval : (double)(yyvsp[-1].val).data.intval;
+        free_value((yyvsp[-1].val));
+        (yyval.val) = make_float(sqrt(v));
+    }
+#line 1947 "bparser.tab.c"
+    break;
+
+  case 92: /* math_function: FLOOR LPAREN expression RPAREN  */
+#line 447 "bparser.y"
+    {
+        double v = ((yyvsp[-1].val).type == TYPE_DECIMAL) ? (yyvsp[-1].val).data.floatval : (double)(yyvsp[-1].val).data.intval;
+        free_value((yyvsp[-1].val));
+        (yyval.val) = make_int((int)floor(v));
+    }
+#line 1957 "bparser.tab.c"
+    break;
+
+  case 93: /* math_function: CEIL LPAREN expression RPAREN  */
+#line 453 "bparser.y"
+    {
+        double v = ((yyvsp[-1].val).type == TYPE_DECIMAL) ? (yyvsp[-1].val).data.floatval : (double)(yyvsp[-1].val).data.intval;
+        free_value((yyvsp[-1].val));
+        (yyval.val) = make_int((int)ceil(v));
+    }
+#line 1967 "bparser.tab.c"
+    break;
+
+  case 94: /* math_function: ABS LPAREN expression RPAREN  */
+#line 459 "bparser.y"
+    {
+        if ((yyvsp[-1].val).type == TYPE_DECIMAL) {
+            (yyval.val) = make_float(fabs((yyvsp[-1].val).data.floatval));
+        } else {
+            (yyval.val) = make_int(abs((yyvsp[-1].val).data.intval));
+        }
+        free_value((yyvsp[-1].val));
+    }
+#line 1980 "bparser.tab.c"
     break;
 
 
-#line 1639 "bparser.tab.c"
+#line 1984 "bparser.tab.c"
 
       default: break;
     }
@@ -1828,8 +2173,79 @@ yyreturnlab:
   return yyresult;
 }
 
-#line 342 "bparser.y"
+#line 469 "bparser.y"
 
+
+/* ================================================================== */
+/*  Runtime binary-operator evaluator                                  */
+/* ================================================================== */
+static Value eval_binop(Value a, int op, Value b)
+{
+    /* ---- String concatenation for PLUS ---- */
+    if (op == OP_PLUS &&
+        (a.type == TYPE_STRING || b.type == TYPE_STRING ||
+         a.type == TYPE_CHAR   || b.type == TYPE_CHAR)) {
+        char buf[4096] = {0};
+
+        /* Helper: append a Value's text to buf */
+        #define APPEND_VAL(v)  do {                                    \
+            if ((v).type == TYPE_STRING || (v).type == TYPE_CHAR) {    \
+                const char *s = (v).data.strval ? (v).data.strval : "";\
+                size_t len = strlen(s);                                 \
+                if (len >= 2 && (s[0]=='"'||s[0]=='\''))               \
+                    strncat(buf, s+1, len-2);                          \
+                else strcat(buf, s);                                    \
+            } else if ((v).type == TYPE_DECIMAL) {                     \
+                char tmp[64]; snprintf(tmp,sizeof(tmp),"%g",(v).data.floatval); strcat(buf,tmp); \
+            } else {                                                    \
+                char tmp[64]; snprintf(tmp,sizeof(tmp),"%d",(v).data.intval);   strcat(buf,tmp); \
+            }                                                           \
+        } while(0)
+
+        APPEND_VAL(a);
+        APPEND_VAL(b);
+        #undef APPEND_VAL
+        free_value(a); free_value(b);
+        return make_string(buf);
+    }
+
+    /* ---- Numeric promotion ---- */
+    int   use_float = (a.type == TYPE_DECIMAL || b.type == TYPE_DECIMAL);
+    double av = (a.type == TYPE_DECIMAL) ? a.data.floatval : (double)a.data.intval;
+    double bv = (b.type == TYPE_DECIMAL) ? b.data.floatval : (double)b.data.intval;
+    int    ai = (a.type == TYPE_BOOL || a.type == TYPE_NUMBER) ? a.data.intval : (int)av;
+    int    bi = (b.type == TYPE_BOOL || b.type == TYPE_NUMBER) ? b.data.intval : (int)bv;
+    free_value(a); free_value(b);
+
+    switch (op) {
+        case OP_PLUS:
+            return use_float ? make_float(av + bv) : make_int(ai + bi);
+        case OP_MINUS:
+            return use_float ? make_float(av - bv) : make_int(ai - bi);
+        case OP_MULT:
+            return use_float ? make_float(av * bv) : make_int(ai * bi);
+        case OP_DIV:
+            if (use_float) {
+                if (bv == 0.0) { fprintf(stderr, "ত্রুটি: শূন্য দিয়ে ভাগ।\n"); return make_float(0); }
+                return make_float(av / bv);
+            } else {
+                if (bi == 0) { fprintf(stderr, "ত্রুটি: শূন্য দিয়ে ভাগ।\n"); return make_int(0); }
+                return make_int(ai / bi);
+            }
+        case OP_MOD:
+            if (bi == 0) { fprintf(stderr, "ত্রুটি: শূন্য দিয়ে মডুলাস।\n"); return make_int(0); }
+            return make_int(ai % bi);
+        case OP_AND:  return make_bool(ai != 0 && bi != 0);
+        case OP_OR:   return make_bool(ai != 0 || bi != 0);
+        case OP_EQ:   return use_float ? make_bool(av == bv) : make_bool(ai == bi);
+        case OP_NEQ:  return use_float ? make_bool(av != bv) : make_bool(ai != bi);
+        case OP_GT:   return use_float ? make_bool(av >  bv) : make_bool(ai >  bi);
+        case OP_LT:   return use_float ? make_bool(av <  bv) : make_bool(ai <  bi);
+        case OP_GTE:  return use_float ? make_bool(av >= bv) : make_bool(ai >= bi);
+        case OP_LTE:  return use_float ? make_bool(av <= bv) : make_bool(ai <= bi);
+        default:      return make_unknown();
+    }
+}
 
 void yyerror(const char *s) {
     fprintf(stderr, "✗ Syntax error at line %d: %s\n", yylineno, s);
@@ -1901,11 +2317,14 @@ int main(int argc, char *argv[]) {
     init_indent();  /* Initialize indentation tracking */
     
     printf("=== Parsing Bangla Program ===\n\n");
-    
+
+    symtable_init();   /* initialise global symbol table */
+
     int result = yyparse();
-    
+
+    symtable_free();   /* release all symbol table memory */
     fclose(yyin);
-    
+
     if (result == 0) {
         printf("\n=== Parsing Complete ===\n");
         return 0;
