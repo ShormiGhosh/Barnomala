@@ -3,6 +3,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <locale.h>
+#include <fcntl.h>
+#ifdef _WIN32
+/* Declare only what we need — including <windows.h> clashes with the
+   Bison INPUT token because winuser.h also typedef-s a struct INPUT. */
+extern unsigned int __stdcall SetConsoleCP(unsigned int wCodePageID);
+extern unsigned int __stdcall SetConsoleOutputCP(unsigned int wCodePageID);
+#endif
 #include "symtable.h"   /* needed here so Value is visible in this prologue */
 
 /* Op-code constants for eval_binop */
@@ -28,6 +36,42 @@ extern void init_indent();
 
 /* Forward declaration — defined after the second %% */
 static Value eval_binop(Value a, int op, Value b);
+
+/* ------------------------------------------------------------------ */
+/*  Execution suppression for if/else branching                        */
+/*  suppress_execution > 0  →  all side effects are no-ops.           */
+/*  nested ifs increment/decrement the counter, so nesting is safe.   */
+/* ------------------------------------------------------------------ */
+int suppress_execution = 0;          /* definition; extern in symtable.h */
+static int cond_stack[256];
+static int cond_top = 0;
+
+static int is_truthy(Value v) {
+    if (v.type == TYPE_DECIMAL) return v.data.floatval != 0.0;
+    return v.data.intval != 0;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Bengali digit → ASCII conversion for runtime input                 */
+/*  Bengali digits U+09E6–U+09EF are encoded as 3-byte UTF-8 sequences */
+/*  E0 A7 A6 … E0 A7 AF. Replace each with its ASCII equivalent.      */
+/* ------------------------------------------------------------------ */
+static void bengali_digits_to_ascii(char *buf) {
+    unsigned char *s = (unsigned char *)buf;
+    unsigned char tmp[1024];
+    int j = 0;
+    for (int i = 0; s[i]; ) {
+        /* Bengali digit: E0 A7 (A6..AF) */
+        if (s[i] == 0xE0 && s[i+1] == 0xA7 && s[i+2] >= 0xA6 && s[i+2] <= 0xAF) {
+            tmp[j++] = '0' + (s[i+2] - 0xA6);
+            i += 3;
+        } else {
+            tmp[j++] = s[i++];
+        }
+    }
+    tmp[j] = '\0';
+    memcpy(buf, tmp, j + 1);
+}
 %}
 
 /* symtable.h must also go into bparser.tab.h so blexer.l can see Value/VarType */
@@ -142,13 +186,15 @@ compound_statement:
 declaration:
     type IDENTIFIER SEMICOLON
     {
-        declare_variable($2, $1);
+        if (!suppress_execution) declare_variable($2, $1);
         free($2);
     }
     | type IDENTIFIER ASSIGN expression SEMICOLON
     {
-        declare_variable($2, $1);
-        assign_variable($2, $4);
+        if (!suppress_execution) {
+            declare_variable($2, $1);
+            assign_variable($2, $4);
+        }
         free_value($4);
         free($2);
     }
@@ -165,7 +211,7 @@ type:
 assignment:
     IDENTIFIER ASSIGN expression SEMICOLON
     {
-        assign_variable($1, $3);
+        if (!suppress_execution) assign_variable($1, $3);
         free_value($3);
         free($1);
     }
@@ -174,6 +220,7 @@ assignment:
 input_statement:
     INPUT LPAREN IDENTIFIER RPAREN SEMICOLON
     {
+        if (!suppress_execution) {
         /* Use raw lookup — this is write access (initialization), not a read.
            lookup_variable would emit a spurious "uninitialized" warning here. */
         SymbolEntry *e = symtable_lookup($3);
@@ -182,21 +229,29 @@ input_statement:
         } else {
             switch (e->type) {
                 case TYPE_NUMBER: {
-                    int v = 0;
-                    if (scanf("%d", &v) == 1)
-                        assign_variable($3, make_int(v));
+                    char buf[64];
+                    if (fgets(buf, sizeof(buf), stdin)) {
+                        buf[strcspn(buf, "\n")] = '\0';
+                        bengali_digits_to_ascii(buf);
+                        assign_variable($3, make_int(atoi(buf)));
+                    }
                     break;
                 }
                 case TYPE_DECIMAL: {
-                    double v = 0.0;
-                    if (scanf("%lf", &v) == 1)
-                        assign_variable($3, make_float(v));
+                    char buf[64];
+                    if (fgets(buf, sizeof(buf), stdin)) {
+                        buf[strcspn(buf, "\n")] = '\0';
+                        bengali_digits_to_ascii(buf);
+                        assign_variable($3, make_float(atof(buf)));
+                    }
                     break;
                 }
                 case TYPE_STRING: {
                     char buf[1024];
-                    if (scanf("%1023s", buf) == 1)
+                    if (fgets(buf, sizeof(buf), stdin)) {
+                        buf[strcspn(buf, "\n")] = '\0';
                         assign_variable($3, make_string(buf));
+                    }
                     break;
                 }
                 case TYPE_BOOL: {
@@ -208,6 +263,7 @@ input_statement:
                 default: break;
             }
         }
+        } /* end if (!suppress_execution) */
         free($3);
     }
     ;
@@ -215,8 +271,10 @@ input_statement:
 print_statement:
     PRINT expression SEMICOLON
     {
-        print_value($2);
-        printf("\n");
+        if (!suppress_execution) {
+            print_value($2);
+            printf("\n");
+        }
         free_value($2);
     }
     ;
@@ -226,14 +284,35 @@ suite:
     | NEWLINE INDENT statements DEDENT
     ;
 
-if_statement:
-    IF expression COLON suite %prec LOWER_THAN_ELSE
+if_header:
+    IF expression COLON
     {
+        int cond = is_truthy($2);
         free_value($2);
+        cond_stack[cond_top++] = cond;
+        if (!cond) suppress_execution++;
     }
-    | IF expression COLON suite ELSE COLON suite
+    ;
+
+else_header:
+    ELSE COLON
     {
-        free_value($2);
+        int cond = cond_stack[cond_top - 1];   /* peek — do NOT pop yet */
+        if (!cond) suppress_execution--;        /* undo then-suppression  */
+        if ( cond) suppress_execution++;        /* start else-suppression */
+    }
+    ;
+
+if_statement:
+    if_header suite %prec LOWER_THAN_ELSE
+    {
+        int cond = cond_stack[--cond_top];
+        if (!cond) suppress_execution--;
+    }
+    | if_header suite else_header suite
+    {
+        int cond = cond_stack[--cond_top];
+        if ( cond) suppress_execution--;        /* undo else-suppression  */
     }
     ;
 
@@ -305,28 +384,30 @@ return_statement:
 break_statement:
     BREAK SEMICOLON
     {
-        printf("Break statement\n");
+        if (!suppress_execution) printf("Break statement\n");
     }
     ;
 
 continue_statement:
     CONTINUE SEMICOLON
     {
-        printf("Continue statement\n");
+        if (!suppress_execution) printf("Continue statement\n");
     }
     ;
 
 increment_statement:
     IDENTIFIER INC SEMICOLON
     {
-        SymbolEntry *e = lookup_variable($1);
-        if (e) {
-            if (e->type == TYPE_NUMBER)
-                assign_variable($1, make_int(e->value.data.intval + 1));
-            else if (e->type == TYPE_DECIMAL)
-                assign_variable($1, make_float(e->value.data.floatval + 1.0));
-            else
-                fprintf(stderr, "ত্রুটি (লাইন %d): '%s' সংখ্যা বা দশমিক নয়, বাড়ানো যাবে না।\n", yylineno, $1);
+        if (!suppress_execution) {
+            SymbolEntry *e = lookup_variable($1);
+            if (e) {
+                if (e->type == TYPE_NUMBER)
+                    assign_variable($1, make_int(e->value.data.intval + 1));
+                else if (e->type == TYPE_DECIMAL)
+                    assign_variable($1, make_float(e->value.data.floatval + 1.0));
+                else
+                    fprintf(stderr, "ত্রুটি (লাইন %d): '%s' সংখ্যা বা দশমিক নয়, বাড়ানো যাবে না।\n", yylineno, $1);
+            }
         }
         free($1);
     }
@@ -335,14 +416,16 @@ increment_statement:
 decrement_statement:
     IDENTIFIER DEC SEMICOLON
     {
-        SymbolEntry *e = lookup_variable($1);
-        if (e) {
-            if (e->type == TYPE_NUMBER)
-                assign_variable($1, make_int(e->value.data.intval - 1));
-            else if (e->type == TYPE_DECIMAL)
-                assign_variable($1, make_float(e->value.data.floatval - 1.0));
-            else
-                fprintf(stderr, "ত্রুটি (লাইন %d): '%s' সংখ্যা বা দশমিক নয়, কমানো যাবে না।\n", yylineno, $1);
+        if (!suppress_execution) {
+            SymbolEntry *e = lookup_variable($1);
+            if (e) {
+                if (e->type == TYPE_NUMBER)
+                    assign_variable($1, make_int(e->value.data.intval - 1));
+                else if (e->type == TYPE_DECIMAL)
+                    assign_variable($1, make_float(e->value.data.floatval - 1.0));
+                else
+                    fprintf(stderr, "ত্রুটি (লাইন %d): '%s' সংখ্যা বা দশমিক নয়, কমানো যাবে না।\n", yylineno, $1);
+            }
         }
         free($1);
     }
@@ -591,6 +674,19 @@ FILE* normalize_input(FILE *input) {
 }
 
 int main(int argc, char *argv[]) {
+    /* Switch the Windows console to UTF-8 so Bengali input/output is not
+       mangled into '?' by the default ANSI code page. Works in both
+       Windows Terminal and MSYS2 mintty. */
+#ifdef _WIN32
+    SetConsoleCP(65001);
+    SetConsoleOutputCP(65001);
+#endif
+    setlocale(LC_ALL, "en_US.UTF-8");
+    /* Keep stdout/stderr in binary mode to prevent \r\n mangling.
+       Do NOT set stdin to binary — let the console CP handle encoding. */
+    _setmode(_fileno(stdout), _O_BINARY);
+    _setmode(_fileno(stderr), _O_BINARY);
+
     if (argc < 2) {
         printf("Usage: %s <input_file>\n", argv[0]);
         return 1;

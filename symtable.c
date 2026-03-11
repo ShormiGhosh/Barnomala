@@ -152,18 +152,35 @@ Value coerce(Value v, VarType target)
     return copy_value(v);
 }
 
+/* Print a string replacing ASCII digits 0-9 with Bengali digits ০-৯.
+   Bengali digit N is UTF-8: E0 A7 (A6+N). */
+static void print_bengali(const char *s)
+{
+    for (; *s; s++) {
+        if (*s >= '0' && *s <= '9') {
+            unsigned char bn[3] = { 0xE0, 0xA7, (unsigned char)(0xA6 + (*s - '0')) };
+            fwrite(bn, 1, 3, stdout);
+        } else {
+            fputc(*s, stdout);
+        }
+    }
+}
+
 void print_value(Value v)
 {
+    char buf[64];
     switch (v.type) {
         case TYPE_NUMBER:
-            printf("%d", v.data.intval);
+            snprintf(buf, sizeof(buf), "%d", v.data.intval);
+            print_bengali(buf);
             break;
         case TYPE_DECIMAL:
             /* Print without trailing zeros when possible */
             if (v.data.floatval == (int)v.data.floatval)
-                printf("%.1f", v.data.floatval);
+                snprintf(buf, sizeof(buf), "%.1f", v.data.floatval);
             else
-                printf("%g", v.data.floatval);
+                snprintf(buf, sizeof(buf), "%g", v.data.floatval);
+            print_bengali(buf);
             break;
         case TYPE_BOOL:
             printf("%s", v.data.intval ? "সত্য" : "মিথ্যা");
@@ -366,6 +383,8 @@ void symtable_dump(void)
  */
 int declare_variable(const char *name, VarType type)
 {
+    if (suppress_execution) return 0;   /* skip in untaken branch */
+
     if (!name || *name == '\0') {
         fprintf(stderr, "অভ্যন্তরীণ ত্রুটি: খালি ভেরিয়েবল নাম।\n");
         return -1;
@@ -386,6 +405,8 @@ int declare_variable(const char *name, VarType type)
  */
 int assign_variable(const char *name, Value val)
 {
+    if (suppress_execution) return 0;   /* skip in untaken branch */
+
     if (!name || *name == '\0') {
         fprintf(stderr, "অভ্যন্তরীণ ত্রুটি: খালি ভেরিয়েবল নাম।\n");
         return -1;
@@ -417,13 +438,14 @@ SymbolEntry *lookup_variable(const char *name)
 
     if (!e) {
         /* ── UNDECLARED USE ───────────────────────────────────────── */
-        fprintf(stderr,
-                "ত্রুটি: '%s' ব্যবহার করা হয়েছে কিন্তু ঘোষণা করা হয়নি।\n",
-                name);
+        if (!suppress_execution)
+            fprintf(stderr,
+                    "ত্রুটি: '%s' ব্যবহার করা হয়েছে কিন্তু ঘোষণা করা হয়নি।\n",
+                    name);
         return NULL;
     }
 
-    if (!e->is_initialized) {
+    if (!e->is_initialized && !suppress_execution) {
         /* ── UNINITIALIZED READ ───────────────────────────────────── */
         fprintf(stderr,
                 "সতর্কতা: '%s' পড়া হচ্ছে কিন্তু এখনও কোনো মান দেওয়া হয়নি।\n",

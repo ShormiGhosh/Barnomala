@@ -45,7 +45,7 @@
 extern int yydebug;
 #endif
 /* "%code requires" blocks.  */
-#line 34 "bparser.y"
+#line 78 "bparser.y"
 
 #include "symtable.h"
 
@@ -129,7 +129,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 38 "bparser.y"
+#line 82 "bparser.y"
 
     int    intval;
     double floatval;

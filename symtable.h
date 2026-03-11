@@ -168,4 +168,12 @@ int assign_variable(const char *name, Value val);
  */
 SymbolEntry *lookup_variable(const char *name);
 
+/*
+ * suppress_execution — set > 0 by the parser when inside a branch that
+ * should not be executed (the untaken side of an if/else).  When > 0,
+ * declare_variable and assign_variable are no-ops, and lookup_variable
+ * suppresses all error/warning diagnostics.
+ */
+extern int suppress_execution;
+
 #endif /* SYMTABLE_H */
