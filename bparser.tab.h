@@ -45,9 +45,9 @@
 extern int yydebug;
 #endif
 /* "%code requires" blocks.  */
-#line 78 "bparser.y"
+#line 26 "bparser.y"
 
-#include "symtable.h"
+#include "ast.h"
 
 #line 53 "bparser.tab.h"
 
@@ -129,13 +129,13 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 82 "bparser.y"
+#line 30 "bparser.y"
 
-    int    intval;
-    double floatval;
-    char  *strval;
-    Value   val;    /* runtime value  — used by expression rules */
-    VarType vtype;  /* declared type  — used by the 'type' rule   */
+    int      intval;
+    double   floatval;
+    char    *strval;
+    VarType  vtype;
+    AstNode *node;
 
 #line 141 "bparser.tab.h"
 

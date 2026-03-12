@@ -6,27 +6,10 @@
 #include <locale.h>
 #include <fcntl.h>
 #ifdef _WIN32
-/* Declare only what we need — including <windows.h> clashes with the
-   Bison INPUT token because winuser.h also typedef-s a struct INPUT. */
 extern unsigned int __stdcall SetConsoleCP(unsigned int wCodePageID);
 extern unsigned int __stdcall SetConsoleOutputCP(unsigned int wCodePageID);
 #endif
-#include "symtable.h"   /* needed here so Value is visible in this prologue */
-
-/* Op-code constants for eval_binop */
-#define OP_PLUS  1
-#define OP_MINUS 2
-#define OP_MULT  3
-#define OP_DIV   4
-#define OP_MOD   5
-#define OP_AND   6
-#define OP_OR    7
-#define OP_EQ    8
-#define OP_NEQ   9
-#define OP_GT   10
-#define OP_LT   11
-#define OP_GTE  12
-#define OP_LTE  13
+#include "ast.h"   /* brings in symtable.h, AstNode, OP_*, eval_expr, exec_stmt */
 
 void yyerror(const char *s);
 extern int yylex();
@@ -34,57 +17,22 @@ extern int yylineno;
 extern FILE *yyin;
 extern void init_indent();
 
-/* Forward declaration — defined after the second %% */
-static Value eval_binop(Value a, int op, Value b);
-
-/* ------------------------------------------------------------------ */
-/*  Execution suppression for if/else branching                        */
-/*  suppress_execution > 0  →  all side effects are no-ops.           */
-/*  nested ifs increment/decrement the counter, so nesting is safe.   */
-/* ------------------------------------------------------------------ */
-int suppress_execution = 0;          /* definition; extern in symtable.h */
-static int cond_stack[256];
-static int cond_top = 0;
-
-static int is_truthy(Value v) {
-    if (v.type == TYPE_DECIMAL) return v.data.floatval != 0.0;
-    return v.data.intval != 0;
-}
-
-/* ------------------------------------------------------------------ */
-/*  Bengali digit → ASCII conversion for runtime input                 */
-/*  Bengali digits U+09E6–U+09EF are encoded as 3-byte UTF-8 sequences */
-/*  E0 A7 A6 … E0 A7 AF. Replace each with its ASCII equivalent.      */
-/* ------------------------------------------------------------------ */
-static void bengali_digits_to_ascii(char *buf) {
-    unsigned char *s = (unsigned char *)buf;
-    unsigned char tmp[1024];
-    int j = 0;
-    for (int i = 0; s[i]; ) {
-        /* Bengali digit: E0 A7 (A6..AF) */
-        if (s[i] == 0xE0 && s[i+1] == 0xA7 && s[i+2] >= 0xA6 && s[i+2] <= 0xAF) {
-            tmp[j++] = '0' + (s[i+2] - 0xA6);
-            i += 3;
-        } else {
-            tmp[j++] = s[i++];
-        }
-    }
-    tmp[j] = '\0';
-    memcpy(buf, tmp, j + 1);
-}
+/* suppress_execution referenced by symtable.c; always 0 in AST mode */
+int suppress_execution = 0;
 %}
 
-/* symtable.h must also go into bparser.tab.h so blexer.l can see Value/VarType */
+/* ast.h (which includes symtable.h) must also appear in bparser.tab.h
+   so blexer.l sees Value / VarType / AstNode. */
 %code requires {
-#include "symtable.h"
+#include "ast.h"
 }
 
 %union {
-    int    intval;
-    double floatval;
-    char  *strval;
-    Value   val;    /* runtime value  — used by expression rules */
-    VarType vtype;  /* declared type  — used by the 'type' rule   */
+    int      intval;
+    double   floatval;
+    char    *strval;
+    VarType  vtype;
+    AstNode *node;
 }
 
 %token PROGRAM_START PROGRAM_END
@@ -105,8 +53,15 @@ static void bengali_digits_to_ascii(char *buf) {
 %token <floatval> FLOAT_LITERAL
 %token <strval> STRING_LITERAL CHAR_LITERAL IDENTIFIER
 
-/* Non-terminal semantic types */
-%type <val>   expression primary_expression math_function array_access function_call
+%type <node>  expression primary_expression math_function array_access function_call
+%type <node>  statements statement simple_statement compound_statement
+%type <node>  suite
+%type <node>  declaration assignment print_statement input_statement
+%type <node>  return_statement break_statement continue_statement
+%type <node>  increment_statement decrement_statement
+%type <node>  array_declaration array_elements
+%type <node>  if_statement while_statement for_statement function_definition
+%type <node>  if_header parameter_list argument_list
 %type <vtype> type
 
 %nonassoc LOWER_THAN_ELSE
@@ -133,10 +88,16 @@ static void bengali_digits_to_ascii(char *buf) {
 program:
     PROGRAM_START newlines statements PROGRAM_END optional_newlines
     {
+        ExecResult r = exec_stmt($3);
+        free_value(r.retval);
+        node_free($3);
         printf("✓ Program parsed successfully!\n");
     }
     | PROGRAM_START statements PROGRAM_END optional_newlines
     {
+        ExecResult r = exec_stmt($2);
+        free_value(r.retval);
+        node_free($2);
         printf("✓ Program parsed successfully!\n");
     }
     ;
@@ -151,52 +112,77 @@ optional_newlines:
     | optional_newlines NEWLINE
     ;
 
+/* statements builds a left-recursive SEQ chain;
+   NULL means empty block (exec_stmt handles NULL as N_NOP). */
 statements:
     /* empty */
+    {
+        $$ = NULL;
+    }
     | statements statement
+    {
+        if ($1 == NULL) {
+            $$ = $2;
+        } else {
+            AstNode *seq = node_new(N_SEQ, yylineno);
+            seq->left  = $1;
+            seq->right = $2;
+            $$ = seq;
+        }
+    }
     | statements NEWLINE
+    {
+        $$ = $1;
+    }
     ;
 
 statement:
-    simple_statement NEWLINE
-    | compound_statement
+    simple_statement NEWLINE  { $$ = $1; }
+    | compound_statement      { $$ = $1; }
     ;
 
 simple_statement:
-    declaration
-    | assignment
-    | input_statement
-    | print_statement
-    | return_statement
-    | break_statement
-    | continue_statement
-    | increment_statement
-    | decrement_statement
-    | array_declaration
+    declaration           { $$ = $1; }
+    | assignment          { $$ = $1; }
+    | input_statement     { $$ = $1; }
+    | print_statement     { $$ = $1; }
+    | return_statement    { $$ = $1; }
+    | break_statement     { $$ = $1; }
+    | continue_statement  { $$ = $1; }
+    | increment_statement { $$ = $1; }
+    | decrement_statement { $$ = $1; }
+    | array_declaration   { $$ = $1; }
     | function_call SEMICOLON
+    {
+        AstNode *n = node_new(N_CALL_STMT, yylineno);
+        n->left = $1;
+        $$ = n;
+    }
     ;
 
 compound_statement:
-    if_statement
-    | while_statement
-    | for_statement
-    | function_definition
+    if_statement          { $$ = $1; }
+    | while_statement     { $$ = $1; }
+    | for_statement       { $$ = $1; }
+    | function_definition { $$ = $1; }
     ;
 
 declaration:
     type IDENTIFIER SEMICOLON
     {
-        if (!suppress_execution) declare_variable($2, $1);
-        free($2);
+        AstNode *n = node_new(N_DECL, yylineno);
+        n->sval  = $2;
+        n->vtype = $1;
+        n->left  = NULL;
+        $$ = n;
     }
     | type IDENTIFIER ASSIGN expression SEMICOLON
     {
-        if (!suppress_execution) {
-            declare_variable($2, $1);
-            assign_variable($2, $4);
-        }
-        free_value($4);
-        free($2);
+        AstNode *n = node_new(N_DECL, yylineno);
+        n->sval  = $2;
+        n->vtype = $1;
+        n->left  = $4;
+        $$ = n;
     }
     ;
 
@@ -211,414 +197,371 @@ type:
 assignment:
     IDENTIFIER ASSIGN expression SEMICOLON
     {
-        if (!suppress_execution) assign_variable($1, $3);
-        free_value($3);
-        free($1);
+        AstNode *n = node_new(N_ASSIGN, yylineno);
+        n->sval = $1;
+        n->left = $3;
+        $$ = n;
     }
     ;
 
 input_statement:
     INPUT LPAREN IDENTIFIER RPAREN SEMICOLON
     {
-        if (!suppress_execution) {
-        /* Use raw lookup — this is write access (initialization), not a read.
-           lookup_variable would emit a spurious "uninitialized" warning here. */
-        SymbolEntry *e = symtable_lookup($3);
-        if (!e) {
-            fprintf(stderr, "ত্রুটি (লাইন %d): '%s' ঘোষণা করা হয়নি।\n", yylineno, $3);
-        } else {
-            switch (e->type) {
-                case TYPE_NUMBER: {
-                    char buf[64];
-                    if (fgets(buf, sizeof(buf), stdin)) {
-                        buf[strcspn(buf, "\n")] = '\0';
-                        bengali_digits_to_ascii(buf);
-                        assign_variable($3, make_int(atoi(buf)));
-                    }
-                    break;
-                }
-                case TYPE_DECIMAL: {
-                    char buf[64];
-                    if (fgets(buf, sizeof(buf), stdin)) {
-                        buf[strcspn(buf, "\n")] = '\0';
-                        bengali_digits_to_ascii(buf);
-                        assign_variable($3, make_float(atof(buf)));
-                    }
-                    break;
-                }
-                case TYPE_STRING: {
-                    char buf[1024];
-                    if (fgets(buf, sizeof(buf), stdin)) {
-                        buf[strcspn(buf, "\n")] = '\0';
-                        assign_variable($3, make_string(buf));
-                    }
-                    break;
-                }
-                case TYPE_BOOL: {
-                    int v = 0;
-                    if (scanf("%d", &v) == 1)
-                        assign_variable($3, make_bool(v));
-                    break;
-                }
-                default: break;
-            }
-        }
-        } /* end if (!suppress_execution) */
-        free($3);
+        AstNode *n = node_new(N_INPUT, yylineno);
+        n->sval = $3;
+        $$ = n;
     }
     ;
 
 print_statement:
     PRINT expression SEMICOLON
     {
-        if (!suppress_execution) {
-            print_value($2);
-            printf("\n");
-        }
-        free_value($2);
+        AstNode *n = node_new(N_PRINT, yylineno);
+        n->left = $2;
+        $$ = n;
     }
     ;
 
 suite:
-    simple_statement NEWLINE
-    | NEWLINE INDENT statements DEDENT
+    simple_statement NEWLINE       { $$ = $1; }
+    | NEWLINE INDENT statements DEDENT { $$ = $3; }
     ;
 
 if_header:
-    IF expression COLON
-    {
-        int cond = is_truthy($2);
-        free_value($2);
-        cond_stack[cond_top++] = cond;
-        if (!cond) suppress_execution++;
-    }
-    ;
-
-else_header:
-    ELSE COLON
-    {
-        int cond = cond_stack[cond_top - 1];   /* peek — do NOT pop yet */
-        if (!cond) suppress_execution--;        /* undo then-suppression  */
-        if ( cond) suppress_execution++;        /* start else-suppression */
-    }
+    IF expression COLON { $$ = $2; }
     ;
 
 if_statement:
     if_header suite %prec LOWER_THAN_ELSE
     {
-        int cond = cond_stack[--cond_top];
-        if (!cond) suppress_execution--;
+        AstNode *n = node_new(N_IF, yylineno);
+        n->left  = $1;
+        n->right = $2;
+        n->extra = NULL;
+        $$ = n;
     }
-    | if_header suite else_header suite
+    | if_header suite ELSE COLON suite
     {
-        int cond = cond_stack[--cond_top];
-        if ( cond) suppress_execution--;        /* undo else-suppression  */
+        AstNode *n = node_new(N_IF, yylineno);
+        n->left  = $1;
+        n->right = $2;
+        n->extra = $5;
+        $$ = n;
     }
     ;
 
 while_statement:
     WHILE expression COLON suite
     {
-        free_value($2);
+        AstNode *n = node_new(N_WHILE, yylineno);
+        n->left  = $2;   /* condition — re-evaluated every iteration */
+        n->right = $4;   /* body */
+        $$ = n;
     }
     ;
 
 for_statement:
     FOR_RANGE LPAREN IDENTIFIER RPAREN expression FROM expression COLON suite
     {
-        /* auto-declare loop variable if it wasn't declared by the user */
-        if (!symtable_lookup($3))
-            declare_variable($3, TYPE_NUMBER);
-        free_value($5); free_value($7);
-        free($3);
+        AstNode *n = node_new(N_FOR_RANGE, yylineno);
+        n->sval  = $3;
+        n->left  = $5;
+        n->right = $7;
+        n->extra = $9;
+        $$ = n;
     }
     ;
 
 function_definition:
     FUNCTION IDENTIFIER LPAREN parameter_list RPAREN COLON suite
     {
-        free($2);
+        AstNode *n = node_new(N_FUNCDEF, yylineno);
+        n->sval  = $2;
+        n->left  = $4;
+        n->right = $7;
+        $$ = n;
     }
     | FUNCTION IDENTIFIER LPAREN RPAREN COLON suite
     {
-        free($2);
+        AstNode *n = node_new(N_FUNCDEF, yylineno);
+        n->sval  = $2;
+        n->left  = NULL;
+        n->right = $6;
+        $$ = n;
     }
     ;
 
 parameter_list:
     IDENTIFIER
     {
-        free($1);
+        AstNode *n = node_new(N_PARAM_LIST, yylineno);
+        n->sval  = $1;
+        n->right = NULL;
+        $$ = n;
     }
     | parameter_list COMMA IDENTIFIER
     {
-        free($3);
+        AstNode *n = node_new(N_PARAM_LIST, yylineno);
+        n->sval  = $3;
+        n->right = $1;
+        $$ = n;
     }
     ;
 
 function_call:
     IDENTIFIER LPAREN argument_list RPAREN
     {
-        free($1);
-        $$ = make_unknown();  /* function execution not yet implemented */
+        AstNode *n = node_new(N_CALL, yylineno);
+        n->sval = $1;
+        n->left = $3;
+        $$ = n;
     }
     | IDENTIFIER LPAREN RPAREN
     {
-        free($1);
-        $$ = make_unknown();
+        AstNode *n = node_new(N_CALL, yylineno);
+        n->sval = $1;
+        n->left = NULL;
+        $$ = n;
     }
     ;
 
 argument_list:
-    expression                       { free_value($1); }
-    | argument_list COMMA expression { free_value($3); }
+    expression
+    {
+        AstNode *n = node_new(N_ARG_LIST, yylineno);
+        n->left  = $1;
+        n->right = NULL;
+        $$ = n;
+    }
+    | argument_list COMMA expression
+    {
+        AstNode *n = node_new(N_ARG_LIST, yylineno);
+        n->left  = $3;
+        n->right = $1;
+        $$ = n;
+    }
     ;
 
 return_statement:
     RETURN expression SEMICOLON
     {
-        free_value($2);
+        AstNode *n = node_new(N_RETURN, yylineno);
+        n->left = $2;
+        $$ = n;
     }
     ;
 
 break_statement:
     BREAK SEMICOLON
     {
-        if (!suppress_execution) printf("Break statement\n");
+        $$ = node_new(N_BREAK, yylineno);
     }
     ;
 
 continue_statement:
     CONTINUE SEMICOLON
     {
-        if (!suppress_execution) printf("Continue statement\n");
+        $$ = node_new(N_CONTINUE, yylineno);
     }
     ;
 
 increment_statement:
     IDENTIFIER INC SEMICOLON
     {
-        if (!suppress_execution) {
-            SymbolEntry *e = lookup_variable($1);
-            if (e) {
-                if (e->type == TYPE_NUMBER)
-                    assign_variable($1, make_int(e->value.data.intval + 1));
-                else if (e->type == TYPE_DECIMAL)
-                    assign_variable($1, make_float(e->value.data.floatval + 1.0));
-                else
-                    fprintf(stderr, "ত্রুটি (লাইন %d): '%s' সংখ্যা বা দশমিক নয়, বাড়ানো যাবে না।\n", yylineno, $1);
-            }
-        }
-        free($1);
+        AstNode *n = node_new(N_INC, yylineno);
+        n->sval = $1;
+        $$ = n;
     }
     ;
 
 decrement_statement:
     IDENTIFIER DEC SEMICOLON
     {
-        if (!suppress_execution) {
-            SymbolEntry *e = lookup_variable($1);
-            if (e) {
-                if (e->type == TYPE_NUMBER)
-                    assign_variable($1, make_int(e->value.data.intval - 1));
-                else if (e->type == TYPE_DECIMAL)
-                    assign_variable($1, make_float(e->value.data.floatval - 1.0));
-                else
-                    fprintf(stderr, "ত্রুটি (লাইন %d): '%s' সংখ্যা বা দশমিক নয়, কমানো যাবে না।\n", yylineno, $1);
-            }
-        }
-        free($1);
+        AstNode *n = node_new(N_DEC, yylineno);
+        n->sval = $1;
+        $$ = n;
     }
     ;
 
 array_declaration:
     ARRAY LPAREN type RPAREN IDENTIFIER LBRACKET INT_LITERAL RBRACKET SEMICOLON
     {
-        /* Arrays not yet backed by runtime storage — parsed only */
-        free($5);
+        AstNode *n = node_new(N_ARRAY_DECL, yylineno);
+        n->sval  = $5;
+        n->vtype = $3;
+        n->ival  = $7;
+        n->left  = NULL;
+        $$ = n;
     }
     | ARRAY LPAREN type RPAREN IDENTIFIER LBRACKET INT_LITERAL RBRACKET ASSIGN LBRACKET array_elements RBRACKET SEMICOLON
     {
-        free($5);
+        AstNode *n = node_new(N_ARRAY_DECL, yylineno);
+        n->sval  = $5;
+        n->vtype = $3;
+        n->ival  = $7;
+        n->left  = $11;
+        $$ = n;
     }
     ;
 
 array_elements:
-    expression                       { free_value($1); }
-    | array_elements COMMA expression { free_value($3); }
+    expression
+    {
+        AstNode *n = node_new(N_INIT_LIST, yylineno);
+        n->left  = $1;
+        n->right = NULL;
+        $$ = n;
+    }
+    | array_elements COMMA expression
+    {
+        AstNode *n = node_new(N_INIT_LIST, yylineno);
+        n->left  = $3;
+        n->right = $1;
+        $$ = n;
+    }
     ;
 
 array_access:
     IDENTIFIER LBRACKET expression RBRACKET
     {
-        free_value($3);
-        free($1);
-        $$ = make_unknown();  /* array runtime not yet implemented */
+        AstNode *n = node_new(N_ARRAY_ACCESS, yylineno);
+        n->sval = $1;
+        n->left = $3;
+        $$ = n;
     }
     ;
 
 expression:
     primary_expression                    { $$ = $1; }
-    | expression PLUS  expression         { $$ = eval_binop($1, OP_PLUS,  $3); }
-    | expression MINUS expression         { $$ = eval_binop($1, OP_MINUS, $3); }
-    | expression MULT  expression         { $$ = eval_binop($1, OP_MULT,  $3); }
-    | expression DIV   expression         { $$ = eval_binop($1, OP_DIV,   $3); }
-    | expression MOD   expression         { $$ = eval_binop($1, OP_MOD,   $3); }
-    | expression AND   expression         { $$ = eval_binop($1, OP_AND,   $3); }
-    | expression OR    expression         { $$ = eval_binop($1, OP_OR,    $3); }
-    | expression EQUAL         expression { $$ = eval_binop($1, OP_EQ,    $3); }
-    | expression NOT_EQUAL     expression { $$ = eval_binop($1, OP_NEQ,   $3); }
-    | expression GREATER       expression { $$ = eval_binop($1, OP_GT,    $3); }
-    | expression LESS          expression { $$ = eval_binop($1, OP_LT,    $3); }
-    | expression GREATER_EQUAL expression { $$ = eval_binop($1, OP_GTE,   $3); }
-    | expression LESS_EQUAL    expression { $$ = eval_binop($1, OP_LTE,   $3); }
-    | expression FROM expression          { free_value($3); $$ = $1; }
+    | expression PLUS  expression
+    { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_PLUS;  n->left=$1; n->right=$3; $$=n; }
+    | expression MINUS expression
+    { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_MINUS; n->left=$1; n->right=$3; $$=n; }
+    | expression MULT  expression
+    { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_MULT;  n->left=$1; n->right=$3; $$=n; }
+    | expression DIV   expression
+    { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_DIV;   n->left=$1; n->right=$3; $$=n; }
+    | expression MOD   expression
+    { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_MOD;   n->left=$1; n->right=$3; $$=n; }
+    | expression AND   expression
+    { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_AND;   n->left=$1; n->right=$3; $$=n; }
+    | expression OR    expression
+    { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_OR;    n->left=$1; n->right=$3; $$=n; }
+    | expression EQUAL         expression
+    { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_EQ;    n->left=$1; n->right=$3; $$=n; }
+    | expression NOT_EQUAL     expression
+    { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_NEQ;   n->left=$1; n->right=$3; $$=n; }
+    | expression GREATER       expression
+    { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_GT;    n->left=$1; n->right=$3; $$=n; }
+    | expression LESS          expression
+    { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_LT;    n->left=$1; n->right=$3; $$=n; }
+    | expression GREATER_EQUAL expression
+    { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_GTE;   n->left=$1; n->right=$3; $$=n; }
+    | expression LESS_EQUAL    expression
+    { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_LTE;   n->left=$1; n->right=$3; $$=n; }
+    | expression FROM expression
+    {
+        node_free($3);
+        $$ = $1;
+    }
     | NOT expression
     {
-        int bval;
-        if      ($2.type == TYPE_DECIMAL) bval = ($2.data.floatval == 0.0) ? 1 : 0;
-        else if ($2.type == TYPE_BOOL)    bval = ($2.data.intval   == 0)   ? 1 : 0;
-        else                              bval = ($2.data.intval   == 0)   ? 1 : 0;
-        free_value($2);
-        $$ = make_bool(bval);
+        AstNode *n = node_new(N_UNARY_NOT, yylineno);
+        n->left = $2;
+        $$ = n;
     }
     | MINUS expression %prec UMINUS
     {
-        if ($2.type == TYPE_DECIMAL) $$ = make_float(-$2.data.floatval);
-        else                         $$ = make_int  (-$2.data.intval);
-        free_value($2);
+        AstNode *n = node_new(N_UNARY_NEG, yylineno);
+        n->left = $2;
+        $$ = n;
     }
     ;
 
 primary_expression:
-    INT_LITERAL              { $$ = make_int($1); }
-    | FLOAT_LITERAL          { $$ = make_float($1); }
-    | STRING_LITERAL         { $$ = make_string($1); free($1); }
-    | CHAR_LITERAL           { $$ = make_char($1);   free($1); }
+    INT_LITERAL
+    {
+        AstNode *n = node_new(N_INT_LIT, yylineno);
+        n->ival = $1;
+        $$ = n;
+    }
+    | FLOAT_LITERAL
+    {
+        AstNode *n = node_new(N_FLOAT_LIT, yylineno);
+        n->fval = $1;
+        $$ = n;
+    }
+    | STRING_LITERAL
+    {
+        AstNode *n = node_new(N_STRING_LIT, yylineno);
+        n->sval = $1;
+        $$ = n;
+    }
+    | CHAR_LITERAL
+    {
+        AstNode *n = node_new(N_CHAR_LIT, yylineno);
+        n->sval = $1;
+        $$ = n;
+    }
     | IDENTIFIER
     {
-        /* lookup_variable reports undeclared-use and uninitialized-read errors */
-        SymbolEntry *e = lookup_variable($1);
-        $$ = e ? copy_value(e->value) : make_unknown();
-        free($1);
+        AstNode *n = node_new(N_IDENT, yylineno);
+        n->sval = $1;
+        $$ = n;
     }
-    | BOOL_TRUE              { $$ = make_bool(1); }
-    | BOOL_FALSE             { $$ = make_bool(0); }
-    | array_access           { $$ = $1; }
-    | function_call          { $$ = $1; }
-    | math_function          { $$ = $1; }
+    | BOOL_TRUE
+    {
+        AstNode *n = node_new(N_BOOL_LIT, yylineno);
+        n->ival = 1;
+        $$ = n;
+    }
+    | BOOL_FALSE
+    {
+        AstNode *n = node_new(N_BOOL_LIT, yylineno);
+        n->ival = 0;
+        $$ = n;
+    }
+    | array_access             { $$ = $1; }
+    | function_call            { $$ = $1; }
+    | math_function            { $$ = $1; }
     | LPAREN expression RPAREN { $$ = $2; }
     ;
 
 math_function:
     POW LPAREN expression COMMA expression RPAREN
     {
-        double base = ($3.type == TYPE_DECIMAL) ? $3.data.floatval : (double)$3.data.intval;
-        double exp  = ($5.type == TYPE_DECIMAL) ? $5.data.floatval : (double)$5.data.intval;
-        free_value($3); free_value($5);
-        $$ = make_float(pow(base, exp));
+        AstNode *n = node_new(N_MATH_POW, yylineno);
+        n->left  = $3;
+        n->right = $5;
+        $$ = n;
     }
     | SQRT LPAREN expression RPAREN
     {
-        double v = ($3.type == TYPE_DECIMAL) ? $3.data.floatval : (double)$3.data.intval;
-        free_value($3);
-        $$ = make_float(sqrt(v));
+        AstNode *n = node_new(N_MATH_SQRT, yylineno);
+        n->left = $3;
+        $$ = n;
     }
     | FLOOR LPAREN expression RPAREN
     {
-        double v = ($3.type == TYPE_DECIMAL) ? $3.data.floatval : (double)$3.data.intval;
-        free_value($3);
-        $$ = make_int((int)floor(v));
+        AstNode *n = node_new(N_MATH_FLOOR, yylineno);
+        n->left = $3;
+        $$ = n;
     }
     | CEIL LPAREN expression RPAREN
     {
-        double v = ($3.type == TYPE_DECIMAL) ? $3.data.floatval : (double)$3.data.intval;
-        free_value($3);
-        $$ = make_int((int)ceil(v));
+        AstNode *n = node_new(N_MATH_CEIL, yylineno);
+        n->left = $3;
+        $$ = n;
     }
     | ABS LPAREN expression RPAREN
     {
-        if ($3.type == TYPE_DECIMAL) {
-            $$ = make_float(fabs($3.data.floatval));
-        } else {
-            $$ = make_int(abs($3.data.intval));
-        }
-        free_value($3);
+        AstNode *n = node_new(N_MATH_ABS, yylineno);
+        n->left = $3;
+        $$ = n;
     }
     ;
 
 %%
-
-/* ================================================================== */
-/*  Runtime binary-operator evaluator                                  */
-/* ================================================================== */
-static Value eval_binop(Value a, int op, Value b)
-{
-    /* ---- String concatenation for PLUS ---- */
-    if (op == OP_PLUS &&
-        (a.type == TYPE_STRING || b.type == TYPE_STRING ||
-         a.type == TYPE_CHAR   || b.type == TYPE_CHAR)) {
-        char buf[4096] = {0};
-
-        /* Helper: append a Value's text to buf */
-        #define APPEND_VAL(v)  do {                                    \
-            if ((v).type == TYPE_STRING || (v).type == TYPE_CHAR) {    \
-                const char *s = (v).data.strval ? (v).data.strval : "";\
-                size_t len = strlen(s);                                 \
-                if (len >= 2 && (s[0]=='"'||s[0]=='\''))               \
-                    strncat(buf, s+1, len-2);                          \
-                else strcat(buf, s);                                    \
-            } else if ((v).type == TYPE_DECIMAL) {                     \
-                char tmp[64]; snprintf(tmp,sizeof(tmp),"%g",(v).data.floatval); strcat(buf,tmp); \
-            } else {                                                    \
-                char tmp[64]; snprintf(tmp,sizeof(tmp),"%d",(v).data.intval);   strcat(buf,tmp); \
-            }                                                           \
-        } while(0)
-
-        APPEND_VAL(a);
-        APPEND_VAL(b);
-        #undef APPEND_VAL
-        free_value(a); free_value(b);
-        return make_string(buf);
-    }
-
-    /* ---- Numeric promotion ---- */
-    int   use_float = (a.type == TYPE_DECIMAL || b.type == TYPE_DECIMAL);
-    double av = (a.type == TYPE_DECIMAL) ? a.data.floatval : (double)a.data.intval;
-    double bv = (b.type == TYPE_DECIMAL) ? b.data.floatval : (double)b.data.intval;
-    int    ai = (a.type == TYPE_BOOL || a.type == TYPE_NUMBER) ? a.data.intval : (int)av;
-    int    bi = (b.type == TYPE_BOOL || b.type == TYPE_NUMBER) ? b.data.intval : (int)bv;
-    free_value(a); free_value(b);
-
-    switch (op) {
-        case OP_PLUS:
-            return use_float ? make_float(av + bv) : make_int(ai + bi);
-        case OP_MINUS:
-            return use_float ? make_float(av - bv) : make_int(ai - bi);
-        case OP_MULT:
-            return use_float ? make_float(av * bv) : make_int(ai * bi);
-        case OP_DIV:
-            if (use_float) {
-                if (bv == 0.0) { fprintf(stderr, "ত্রুটি: শূন্য দিয়ে ভাগ।\n"); return make_float(0); }
-                return make_float(av / bv);
-            } else {
-                if (bi == 0) { fprintf(stderr, "ত্রুটি: শূন্য দিয়ে ভাগ।\n"); return make_int(0); }
-                return make_int(ai / bi);
-            }
-        case OP_MOD:
-            if (bi == 0) { fprintf(stderr, "ত্রুটি: শূন্য দিয়ে মডুলাস।\n"); return make_int(0); }
-            return make_int(ai % bi);
-        case OP_AND:  return make_bool(ai != 0 && bi != 0);
-        case OP_OR:   return make_bool(ai != 0 || bi != 0);
-        case OP_EQ:   return use_float ? make_bool(av == bv) : make_bool(ai == bi);
-        case OP_NEQ:  return use_float ? make_bool(av != bv) : make_bool(ai != bi);
-        case OP_GT:   return use_float ? make_bool(av >  bv) : make_bool(ai >  bi);
-        case OP_LT:   return use_float ? make_bool(av <  bv) : make_bool(ai <  bi);
-        case OP_GTE:  return use_float ? make_bool(av >= bv) : make_bool(ai >= bi);
-        case OP_LTE:  return use_float ? make_bool(av <= bv) : make_bool(ai <= bi);
-        default:      return make_unknown();
-    }
-}
 
 void yyerror(const char *s) {
     fprintf(stderr, "✗ Syntax error at line %d: %s\n", yylineno, s);
@@ -705,10 +648,12 @@ int main(int argc, char *argv[]) {
     printf("=== Parsing Bangla Program ===\n\n");
 
     symtable_init();   /* initialise global symbol table */
+    func_table_init(); /* initialise user-defined function table */
 
     int result = yyparse();
 
     symtable_free();   /* release all symbol table memory */
+    func_table_free(); /* release all function table memory */
     fclose(yyin);
 
     if (result == 0) {

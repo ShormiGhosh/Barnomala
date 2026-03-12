@@ -19,6 +19,8 @@ YACC_OUTPUT = bparser.tab.c
 YACC_HEADER = bparser.tab.h
 SYMTABLE_SRC = symtable.c
 SYMTABLE_HDR = symtable.h
+AST_SRC = ast.c
+AST_HDR = ast.h
 
 # Default target
 all: $(TARGET)
@@ -31,9 +33,9 @@ $(YACC_OUTPUT) $(YACC_HEADER): $(YACC_SOURCE)
 $(LEX_OUTPUT): $(LEX_SOURCE) $(YACC_HEADER)
 	$(LEX) $(LEX_SOURCE)
 
-# Compile the lexer, parser, and symbol table together
-$(TARGET): $(LEX_OUTPUT) $(YACC_OUTPUT) $(SYMTABLE_SRC) $(SYMTABLE_HDR)
-	$(CC) $(CFLAGS) $(LEX_OUTPUT) $(YACC_OUTPUT) $(SYMTABLE_SRC) -o $(TARGET)
+# Compile the lexer, parser, symbol table and AST together
+$(TARGET): $(LEX_OUTPUT) $(YACC_OUTPUT) $(SYMTABLE_SRC) $(SYMTABLE_HDR) $(AST_SRC) $(AST_HDR)
+	$(CC) $(CFLAGS) $(LEX_OUTPUT) $(YACC_OUTPUT) $(SYMTABLE_SRC) $(AST_SRC) -o $(TARGET) -lm
 	@echo "✓ Compilation successful! Executable: $(TARGET)"
 
 # Run the compiler on input file
