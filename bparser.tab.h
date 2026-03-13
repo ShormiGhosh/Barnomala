@@ -91,36 +91,37 @@ extern int yydebug;
     FLOOR = 286,                   /* FLOOR  */
     CEIL = 287,                    /* CEIL  */
     ABS = 288,                     /* ABS  */
-    INC = 289,                     /* INC  */
-    DEC = 290,                     /* DEC  */
-    BOOL_TRUE = 291,               /* BOOL_TRUE  */
-    BOOL_FALSE = 292,              /* BOOL_FALSE  */
-    INCLUDE = 293,                 /* INCLUDE  */
-    INDENT = 294,                  /* INDENT  */
-    DEDENT = 295,                  /* DEDENT  */
-    NEWLINE = 296,                 /* NEWLINE  */
-    INT_LITERAL = 297,             /* INT_LITERAL  */
-    FLOAT_LITERAL = 298,           /* FLOAT_LITERAL  */
-    STRING_LITERAL = 299,          /* STRING_LITERAL  */
-    CHAR_LITERAL = 300,            /* CHAR_LITERAL  */
-    IDENTIFIER = 301,              /* IDENTIFIER  */
-    LOWER_THAN_ELSE = 302,         /* LOWER_THAN_ELSE  */
-    UMINUS = 303,                  /* UMINUS  */
-    PLUS = 304,                    /* PLUS  */
-    MINUS = 305,                   /* MINUS  */
-    MULT = 306,                    /* MULT  */
-    DIV = 307,                     /* DIV  */
-    MOD = 308,                     /* MOD  */
-    AND = 309,                     /* AND  */
-    OR = 310,                      /* OR  */
-    NOT = 311,                     /* NOT  */
-    ASSIGN = 312,                  /* ASSIGN  */
-    EQUAL = 313,                   /* EQUAL  */
-    NOT_EQUAL = 314,               /* NOT_EQUAL  */
-    GREATER = 315,                 /* GREATER  */
-    LESS = 316,                    /* LESS  */
-    GREATER_EQUAL = 317,           /* GREATER_EQUAL  */
-    LESS_EQUAL = 318               /* LESS_EQUAL  */
+    LENGTH = 289,                  /* LENGTH  */
+    INC = 290,                     /* INC  */
+    DEC = 291,                     /* DEC  */
+    BOOL_TRUE = 292,               /* BOOL_TRUE  */
+    BOOL_FALSE = 293,              /* BOOL_FALSE  */
+    INCLUDE = 294,                 /* INCLUDE  */
+    INDENT = 295,                  /* INDENT  */
+    DEDENT = 296,                  /* DEDENT  */
+    NEWLINE = 297,                 /* NEWLINE  */
+    INT_LITERAL = 298,             /* INT_LITERAL  */
+    FLOAT_LITERAL = 299,           /* FLOAT_LITERAL  */
+    STRING_LITERAL = 300,          /* STRING_LITERAL  */
+    CHAR_LITERAL = 301,            /* CHAR_LITERAL  */
+    IDENTIFIER = 302,              /* IDENTIFIER  */
+    LOWER_THAN_ELSE = 303,         /* LOWER_THAN_ELSE  */
+    UMINUS = 304,                  /* UMINUS  */
+    PLUS = 305,                    /* PLUS  */
+    MINUS = 306,                   /* MINUS  */
+    MULT = 307,                    /* MULT  */
+    DIV = 308,                     /* DIV  */
+    MOD = 309,                     /* MOD  */
+    AND = 310,                     /* AND  */
+    OR = 311,                      /* OR  */
+    NOT = 312,                     /* NOT  */
+    ASSIGN = 313,                  /* ASSIGN  */
+    EQUAL = 314,                   /* EQUAL  */
+    NOT_EQUAL = 315,               /* NOT_EQUAL  */
+    GREATER = 316,                 /* GREATER  */
+    LESS = 317,                    /* LESS  */
+    GREATER_EQUAL = 318,           /* GREATER_EQUAL  */
+    LESS_EQUAL = 319               /* LESS_EQUAL  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -137,7 +138,7 @@ union YYSTYPE
     VarType  vtype;
     AstNode *node;
 
-#line 141 "bparser.tab.h"
+#line 142 "bparser.tab.h"
 
 };
 typedef union YYSTYPE YYSTYPE;

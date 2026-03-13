@@ -43,7 +43,7 @@ int suppress_execution = 0;
 %token LPAREN RPAREN LBRACKET RBRACKET
 %token COMMA COLON SEMICOLON
 %token ARRAY
-%token POW SQRT FLOOR CEIL ABS
+%token POW SQRT FLOOR CEIL ABS LENGTH
 %token INC DEC
 %token BOOL_TRUE BOOL_FALSE
 %token INCLUDE
@@ -59,7 +59,7 @@ int suppress_execution = 0;
 %type <node>  declaration assignment print_statement input_statement
 %type <node>  return_statement break_statement continue_statement
 %type <node>  increment_statement decrement_statement
-%type <node>  array_declaration array_elements
+%type <node>  array_declaration array_elements array_assignment
 %type <node>  if_statement while_statement for_statement function_definition
 %type <node>  if_header parameter_list argument_list
 %type <vtype> type
@@ -144,6 +144,7 @@ statement:
 simple_statement:
     declaration           { $$ = $1; }
     | assignment          { $$ = $1; }
+    | array_assignment    { $$ = $1; }
     | input_statement     { $$ = $1; }
     | print_statement     { $$ = $1; }
     | return_statement    { $$ = $1; }
@@ -383,6 +384,17 @@ decrement_statement:
     }
     ;
 
+array_assignment:
+    IDENTIFIER LBRACKET expression RBRACKET ASSIGN expression SEMICOLON
+    {
+        AstNode *n = node_new(N_ARRAY_ASSIGN, yylineno);
+        n->sval  = $1;
+        n->left  = $3;   /* index */
+        n->right = $6;   /* new value */
+        $$ = n;
+    }
+    ;
+
 array_declaration:
     ARRAY LPAREN type RPAREN IDENTIFIER LBRACKET INT_LITERAL RBRACKET SEMICOLON
     {
@@ -557,6 +569,12 @@ math_function:
     {
         AstNode *n = node_new(N_MATH_ABS, yylineno);
         n->left = $3;
+        $$ = n;
+    }
+    | LENGTH LPAREN IDENTIFIER RPAREN
+    {
+        AstNode *n = node_new(N_ARRAY_LEN, yylineno);
+        n->sval = $3;
         $$ = n;
     }
     ;

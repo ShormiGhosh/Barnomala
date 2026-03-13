@@ -15,6 +15,7 @@ typedef enum {
     TYPE_BOOL,      /* বুলিয়ান — 0 (মিথ্যা) / 1 (সত্য)  */
     TYPE_CHAR,      /* অক্ষর   — single UTF-8 character   */
     TYPE_STRING,    /* বাক্য   — heap-allocated string    */
+    TYPE_ARRAY,     /* ধারক    — fixed-size array          */
     TYPE_UNKNOWN    /* sentinel / unresolved               */
 } VarType;
 
@@ -22,14 +23,21 @@ typedef enum {
 /*  Runtime Value                                                       */
 /*  A tagged union — type field always indicates which member is live  */
 /* ================================================================== */
-typedef struct {
+/* Forward-declare so the arr.elems self-reference compiles */
+typedef struct Value Value;
+struct Value {
     VarType type;
     union {
         int    intval;    /* TYPE_NUMBER, TYPE_BOOL             */
         double floatval;  /* TYPE_DECIMAL                       */
         char  *strval;    /* TYPE_CHAR, TYPE_STRING  (heap ptr) */
+        struct {
+            Value  *elems;     /* heap array of Value           */
+            int     size;      /* number of elements            */
+            VarType elem_type; /* declared element type         */
+        } arr;            /* TYPE_ARRAY                         */
     } data;
-} Value;
+};
 
 /* ------------------------------------------------------------------ */
 /*  Value constructors  (all return by value, strings are deep-copied) */

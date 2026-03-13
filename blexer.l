@@ -131,6 +131,7 @@ void init_indent() {
 
 "ধারক"             { return ARRAY; }
 
+"দৈর্ঘ্য"            { return LENGTH; }
 "শক্তি"             { return POW; }
 "বর্গমূল"           { return SQRT; }
 "ফ্লোর"             { return FLOOR; }

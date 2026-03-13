@@ -204,9 +204,30 @@ Value eval_expr(AstNode *n)
         }
     }
 
-    case N_ARRAY_ACCESS:
-        /* array runtime not yet implemented */
-        return make_unknown();
+    case N_ARRAY_LEN: {
+        SymbolEntry *e = symtable_lookup(n->sval);
+        if (!e || e->value.type != TYPE_ARRAY) {
+            fprintf(stderr, "ত্রুটি: '%s' ধারক নয় বা বিদ্যমান নেই।\n", n->sval);
+            return make_int(0);
+        }
+        return make_int(e->value.data.arr.size);
+    }
+
+    case N_ARRAY_ACCESS: {
+        SymbolEntry *e = symtable_lookup(n->sval);
+        if (!e || e->value.type != TYPE_ARRAY) {
+            fprintf(stderr, "ত্রুটি: '%s' ধারক নয় বা বিদ্যমান নেই।\n", n->sval);
+            return make_unknown();
+        }
+        Value idx = eval_expr(n->left);
+        int i = (idx.type == TYPE_DECIMAL) ? (int)idx.data.floatval : idx.data.intval;
+        free_value(idx);
+        if (i < 0 || i >= e->value.data.arr.size) {
+            fprintf(stderr, "ত্রুটি: ধারক সীমানা লঙ্ঘন (%d), আকার %d।\n", i, e->value.data.arr.size);
+            return make_unknown();
+        }
+        return copy_value(e->value.data.arr.elems[i]);
+    }
 
     case N_CALL: {
         FuncEntry *fn = func_table_lookup(n->sval);
@@ -483,10 +504,72 @@ ExecResult exec_stmt(AstNode *n)
         return ok;
     }
 
-    case N_ARRAY_DECL:
-        /* declare the variable; array storage not yet implemented */
-        declare_variable(n->sval, n->vtype);
+    case N_ARRAY_DECL: {
+        int     size      = n->ival;
+        VarType elem_type = n->vtype;
+
+        /* Build the array Value with default-initialized elements */
+        Value arrval;
+        memset(&arrval, 0, sizeof(arrval));
+        arrval.type               = TYPE_ARRAY;
+        arrval.data.arr.size      = size;
+        arrval.data.arr.elem_type = elem_type;
+        arrval.data.arr.elems     = calloc(size, sizeof(Value));
+
+        for (int i = 0; i < size; i++) {
+            switch (elem_type) {
+                case TYPE_NUMBER:  arrval.data.arr.elems[i] = make_int(0);     break;
+                case TYPE_DECIMAL: arrval.data.arr.elems[i] = make_float(0.0); break;
+                case TYPE_BOOL:    arrval.data.arr.elems[i] = make_bool(0);    break;
+                case TYPE_STRING:  arrval.data.arr.elems[i] = make_string(""); break;
+                case TYPE_CHAR:    arrval.data.arr.elems[i] = make_char("");   break;
+                default:           arrval.data.arr.elems[i] = make_unknown();  break;
+            }
+        }
+
+        /* Fill from init list (n->left = N_INIT_LIST, built in reverse) */
+        if (n->left) {
+            /* Collect nodes by traversing the right-linked chain */
+            AstNode *init_nodes[1024];
+            int nc = 0;
+            for (AstNode *il = n->left; il && nc < 1024; il = il->right)
+                init_nodes[nc++] = il->left;
+            /* chain is reversed: init_nodes[0]=last expr, init_nodes[nc-1]=first */
+            for (int i = 0; i < nc && i < size; i++) {
+                Value v = eval_expr(init_nodes[nc - 1 - i]);
+                free_value(arrval.data.arr.elems[i]);
+                arrval.data.arr.elems[i] = coerce(v, elem_type);
+                free_value(v);
+            }
+        }
+
+        /* Declare in current scope then assign the array value */
+        declare_variable(n->sval, TYPE_ARRAY);
+        symtable_assign(n->sval, arrval);
+        free_value(arrval);   /* symtable_assign deep-copies via coerce */
         return ok;
+    }
+
+    case N_ARRAY_ASSIGN: {
+        /* sval=arrname, left=index_expr, right=value_expr */
+        SymbolEntry *e = symtable_lookup(n->sval);
+        if (!e || e->value.type != TYPE_ARRAY) {
+            fprintf(stderr, "ত্রুটি: '%s' ধারক নয় বা বিদ্যমান নেই।\n", n->sval);
+            return ok;
+        }
+        Value idx = eval_expr(n->left);
+        int i = (idx.type == TYPE_DECIMAL) ? (int)idx.data.floatval : idx.data.intval;
+        free_value(idx);
+        if (i < 0 || i >= e->value.data.arr.size) {
+            fprintf(stderr, "ত্রুটি: ধারক সীমানা লঙ্ঘন (%d), আকার %d।\n", i, e->value.data.arr.size);
+            return ok;
+        }
+        Value newval = eval_expr(n->right);
+        free_value(e->value.data.arr.elems[i]);
+        e->value.data.arr.elems[i] = coerce(newval, e->value.data.arr.elem_type);
+        free_value(newval);
+        return ok;
+    }
 
     case N_CALL_STMT: {
         Value v = eval_expr(n->left);

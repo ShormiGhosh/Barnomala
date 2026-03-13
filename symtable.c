@@ -76,6 +76,11 @@ void free_value(Value v)
 {
     if ((v.type == TYPE_STRING || v.type == TYPE_CHAR) && v.data.strval)
         free(v.data.strval);
+    if (v.type == TYPE_ARRAY && v.data.arr.elems) {
+        for (int i = 0; i < v.data.arr.size; i++)
+            free_value(v.data.arr.elems[i]);
+        free(v.data.arr.elems);
+    }
 }
 
 Value copy_value(Value v)
@@ -84,6 +89,16 @@ Value copy_value(Value v)
         Value c;
         c.type        = v.type;
         c.data.strval = v.data.strval ? strdup(v.data.strval) : NULL;
+        return c;
+    }
+    if (v.type == TYPE_ARRAY) {
+        Value c;
+        c.type               = TYPE_ARRAY;
+        c.data.arr.size      = v.data.arr.size;
+        c.data.arr.elem_type = v.data.arr.elem_type;
+        c.data.arr.elems     = malloc(v.data.arr.size * sizeof(Value));
+        for (int i = 0; i < v.data.arr.size; i++)
+            c.data.arr.elems[i] = copy_value(v.data.arr.elems[i]);
         return c;
     }
     return v;   /* numeric types are trivially copyable */
@@ -97,6 +112,7 @@ const char *type_name(VarType t)
         case TYPE_BOOL:    return "বুলিয়ান";
         case TYPE_CHAR:    return "অক্ষর";
         case TYPE_STRING:  return "বাক্য";
+        case TYPE_ARRAY:   return "ধারক";
         default:           return "অজানা";
     }
 }
@@ -115,6 +131,7 @@ int types_compatible(VarType declared, VarType given)
     if (declared == TYPE_NUMBER  && given == TYPE_DECIMAL) return 1;  /* truncate */
     if (declared == TYPE_BOOL    && given == TYPE_NUMBER) return 1;
     if (declared == TYPE_NUMBER  && given == TYPE_BOOL)   return 1;
+    if (declared == TYPE_ARRAY   && given == TYPE_ARRAY)  return 1;
     return 0;
 }
 
@@ -145,6 +162,8 @@ Value coerce(Value v, VarType target)
             if (v.type == TYPE_DECIMAL)
                 return make_bool(v.data.floatval != 0.0);
             break;
+        case TYPE_ARRAY:
+            return copy_value(v);   /* array-to-array deep copy */
         default:
             break;
     }
@@ -199,6 +218,14 @@ void print_value(Value v)
                     printf("%s", s);
                 }
             }
+            break;
+        case TYPE_ARRAY:
+            printf("[");
+            for (int i = 0; i < v.data.arr.size; i++) {
+                if (i > 0) printf(", ");
+                print_value(v.data.arr.elems[i]);
+            }
+            printf("]");
             break;
         default:
             printf("<অজানা>");
@@ -334,9 +361,8 @@ int symtable_assign(const char *name, Value val)
         return -2;
     }
 
-    /* Free old heap string before overwriting */
-    if ((e->type == TYPE_STRING || e->type == TYPE_CHAR) && e->value.data.strval)
-        free(e->value.data.strval);
+    /* Free old value (handles strings, arrays, etc.) before overwriting */
+    free_value(e->value);
 
     e->value          = coerce(val, e->type);
     e->is_initialized = 1;

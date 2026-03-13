@@ -40,6 +40,7 @@ typedef enum {
     N_MATH_FLOOR,    /* left=operand                                  */
     N_MATH_CEIL,     /* left=operand                                  */
     N_MATH_ABS,      /* left=operand                                  */
+    N_ARRAY_LEN,     /* sval=array name — returns int size            */
     N_ARRAY_ACCESS,  /* sval=array name, left=index expr              */
     N_ARG_LIST,      /* left=expr, right=next N_ARG_LIST (prepended)  */
 
@@ -62,6 +63,7 @@ typedef enum {
     N_ARRAY_DECL,    /* sval=name, vtype=elem_type, ival=size,
                         left=init_list (N_INIT_LIST) or NULL          */
     N_INIT_LIST,     /* left=expr, right=next N_INIT_LIST (prepended) */
+    N_ARRAY_ASSIGN,  /* sval=arrname, left=index_expr, right=val_expr  */
     N_CALL_STMT,     /* left = N_CALL used as a statement              */
     N_NOP,           /* empty / no-op                                  */
 } NodeKind;
