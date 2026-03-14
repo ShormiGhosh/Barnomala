@@ -1,0 +1,170 @@
+=== Generated TAC ===
+বয়স = 10
+ফ = 0.5
+সত্য_মিথ্যা = 1
+এ = 'ক'
+বাক্য_উদাহরণ = "আমি ভাত খাই"
+PARAM "আপনার বয়স লিখুনঃ "
+CALL print, 1
+t1 = CALL input, 0
+ব্যবহারকারী_বয়স = t1
+PARAM "ইনপুট নেওয়া হয়েছেঃ "
+CALL print, 1
+PARAM ব্যবহারকারী_বয়স
+CALL print, 1
+PARAM "আপনার নাম লিখুনঃ "
+CALL print, 1
+t2 = CALL input, 0
+ব্যবহারকারী_নাম = t2
+PARAM ব্যবহারকারী_নাম
+CALL print, 1
+t3 = ব্যবহারকারী_বয়স > 18
+IF t3 GOTO L1
+GOTO L3
+LABEL L1
+PARAM "প্রাপ্তবয়স্ক"
+CALL print, 1
+GOTO L2
+LABEL L3
+PARAM "কিশোর"
+CALL print, 1
+LABEL L2
+গ = 0
+LABEL L4
+t4 = গ < 10
+IF t4 GOTO L5
+GOTO L6
+LABEL L5
+PARAM "শর্মি"
+CALL print, 1
+t5 = গ + 1
+গ = t5
+GOTO L4
+LABEL L6
+ই = 1
+LABEL L7
+t6 = ই <= 3
+IF t6 GOTO L8
+GOTO L10
+LABEL L8
+PARAM ই
+CALL print, 1
+LABEL L9
+t7 = ই + 1
+ই = t7
+GOTO L7
+LABEL L10
+LABEL যোগ_কর
+যোগফল = 0
+LABEL L11
+t8 = গ < 6
+IF t8 GOTO L12
+GOTO L13
+LABEL L12
+t9 = যোগফল + গ
+t10 = t9 + 1
+যোগফল = t10
+t11 = গ + 1
+গ = t11
+GOTO L11
+LABEL L13
+RETURN যোগফল
+RETURN
+PARAM 3
+t12 = CALL যোগ_কর, 1
+উত্তর = t12
+PARAM উত্তর
+CALL print, 1
+তালিকা[0] = 10
+তালিকা[1] = 20
+তালিকা[2] = 30
+তালিকা[3] = 40
+তালিকা[4] = 50
+t13 = তালিকা[0]
+PARAM t13
+CALL print, 1
+t14 = তালিকা[2]
+PARAM t14
+CALL print, 1
+তালিকা[1] = 99
+t15 = তালিকা[1]
+PARAM t15
+CALL print, 1
+PARAM তালিকা
+t16 = CALL length, 1
+PARAM t16
+CALL print, 1
+ধ[0] = 0
+ধ[1] = 1
+ধ[2] = 2
+ধ[3] = 3
+ধ[4] = 4
+আই = 0
+LABEL L14
+t17 = আই < 5
+IF t17 GOTO L15
+GOTO L16
+LABEL L15
+t18 = ধ[আই]
+PARAM t18
+CALL print, 1
+t19 = আই + 1
+আই = t19
+GOTO L14
+LABEL L16
+এক্স = 5
+ওয়াই = 10
+t20 = এক্স + ওয়াই
+যোগ_ফল = t20
+t21 = ওয়াই - এক্স
+বিয়োগ_ফল = t21
+t22 = এক্স * ওয়াই
+গুণফল = t22
+t23 = ওয়াই / এক্স
+ভাগফল = t23
+t24 = ওয়াই % এক্স
+ভাগশেষফল = t24
+প = 1
+ক = 0
+t25 = প && ক
+র = t25
+t26 = প || ক
+স = t26
+t27 = !প
+ন = t27
+t28 = এক্স + 1
+এক্স = t28
+t29 = ওয়াই - 1
+ওয়াই = t29
+PARAM 2
+PARAM 10
+t30 = CALL pow, 2
+ল = t30
+PARAM ল
+CALL print, 1
+PARAM 16
+t31 = CALL sqrt, 1
+PARAM t31
+CALL print, 1
+t32 = -5
+PARAM t32
+t33 = CALL abs, 1
+PARAM t33
+CALL print, 1
+PARAM 2
+PARAM 3
+t34 = CALL pow, 2
+শক্তি_ফল = t34
+PARAM 9
+t35 = CALL sqrt, 1
+বর্গমূল_ফল = t35
+PARAM 3.7
+t36 = CALL floor, 1
+ফ্লোর_ফল = t36
+PARAM 3.2
+t37 = CALL ceil, 1
+সিল_ফল = t37
+t38 = -10
+PARAM t38
+t39 = CALL abs, 1
+পরম_ফল = t39

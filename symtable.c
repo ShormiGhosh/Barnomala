@@ -118,17 +118,19 @@ const char *type_name(VarType t)
 }
 
 /*
- * Compatible pairs (declared ← given):
- *   NUMBER  ← BOOL    (bool treated as 0/1 integer)
- *   BOOL    ← NUMBER  (any non-zero int → true)
- *   DECIMAL ← NUMBER  (int promoted to double)
- *   Anything ← same type (trivially compatible)
+ * Compatible pairs (declared <- given):
+ *   DECIMAL <- NUMBER  (implicit int to float promotion)
+ *   NUMBER  <- BOOL    (bool treated as 0/1 integer)
+ *   BOOL    <- NUMBER  (0/1 numeric to boolean)
+ *   Anything <- same type (trivially compatible)
+ *
+ * Intentionally NOT allowed implicitly:
+ *   NUMBER <- DECIMAL  (prevents silent truncation)
  */
 int types_compatible(VarType declared, VarType given)
 {
     if (declared == given)                                return 1;
     if (declared == TYPE_DECIMAL && given == TYPE_NUMBER) return 1;
-    if (declared == TYPE_NUMBER  && given == TYPE_DECIMAL) return 1;  /* truncate */
     if (declared == TYPE_BOOL    && given == TYPE_NUMBER) return 1;
     if (declared == TYPE_NUMBER  && given == TYPE_BOOL)   return 1;
     if (declared == TYPE_ARRAY   && given == TYPE_ARRAY)  return 1;
@@ -151,8 +153,6 @@ Value coerce(Value v, VarType target)
                 return make_float((double)v.data.intval);
             break;
         case TYPE_NUMBER:
-            if (v.type == TYPE_DECIMAL)
-                return make_int((int)v.data.floatval);
             if (v.type == TYPE_BOOL)
                 return make_int(v.data.intval);
             break;

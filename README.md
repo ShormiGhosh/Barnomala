@@ -87,6 +87,33 @@ make
 ./barnomala binput.bn.txt
 ```
 
+### Generate intermediate code (TAC) to a file:
+```bash
+./barnomala binput.bn.txt --ir
+```
+Default output file: `ir.out.txt`
+
+To choose a custom IR output file:
+```bash
+./barnomala binput.bn.txt --ir my_ir.txt
+```
+
+### Sample TAC (from `--ir` output)
+```text
+ব্যবহারকারী_বয়স = t1
+t3 = ব্যবহারকারী_বয়স > 18
+IF t3 GOTO L1
+GOTO L3
+LABEL L1
+PARAM "প্রাপ্তবয়স্ক"
+CALL print, 1
+GOTO L2
+LABEL L3
+PARAM "কিশোর"
+CALL print, 1
+LABEL L2
+```
+
 ### Or use make:
 ```bash
 make run
@@ -150,8 +177,8 @@ make run
 - Symbol table management
 - Scope resolution
 
-### 📋 Phase 4: Code Generation (PLANNED)
-- Generate intermediate code
+### 🚧 Phase 4: Code Generation (IN PROGRESS)
+- Generate intermediate code (TAC)
 - Target code generation
 - Optimization
 
@@ -203,5 +230,5 @@ Educational/Open Source Project
 
 ---
 
-**Note**: This compiler is under active development. The lexical and syntax analysis phases are complete. Semantic analysis and code generation are in progress.
+**Note**: This compiler is under active development. The lexical and syntax analysis phases are complete. Semantic analysis and TAC-based intermediate code generation are in progress.
 ```" 

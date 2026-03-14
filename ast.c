@@ -9,6 +9,26 @@
 /* ------------------------------------------------------------------ */
 static Value eval_binop(Value a, int op, Value b);
 
+static int eval_condition_bool(AstNode *cond_node, const char *ctx_name)
+{
+    Value cond = eval_expr(cond_node);
+    int result = 0;
+
+    if (cond.type != TYPE_BOOL) {
+        fprintf(stderr,
+                "ত্রুটি (লাইন %d): %s শর্ত অবশ্যই বুলিয়ান হতে হবে; পাওয়া গেছে '%s'।\n",
+                cond_node ? cond_node->lineno : 0,
+                ctx_name ? ctx_name : "নিয়ন্ত্রণ",
+                type_name(cond.type));
+        free_value(cond);
+        return -1;
+    }
+
+    result = (cond.data.intval != 0) ? 1 : 0;
+    free_value(cond);
+    return result;
+}
+
 /* ================================================================== */
 /*  Function Table                                                      */
 /* ================================================================== */
@@ -382,9 +402,8 @@ ExecResult exec_stmt(AstNode *n)
     }
 
     case N_IF: {
-        Value cond = eval_expr(n->left);
-        int go = is_truthy(cond);
-        free_value(cond);
+        int go = eval_condition_bool(n->left, "যদি");
+        if (go < 0) return ok;
         if (go)
             return exec_stmt(n->right);
         else if (n->extra)
@@ -395,9 +414,11 @@ ExecResult exec_stmt(AstNode *n)
     case N_WHILE: {
         ExecResult r = ok;
         while (1) {
-            Value cond = eval_expr(n->left);
-            int go = is_truthy(cond);
-            free_value(cond);
+            int go = eval_condition_bool(n->left, "যতক্ষণ");
+            if (go < 0) {
+                r = ok;
+                break;
+            }
             if (!go) break;
 
             r = exec_stmt(n->right);

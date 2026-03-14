@@ -52,7 +52,7 @@ Value make_unknown(void);           /* placeholder uninitialized val */
 /* ------------------------------------------------------------------ */
 /*  Value helpers                                                       */
 /* ------------------------------------------------------------------ */
-Value       coerce(Value v, VarType target);          /* implicit cast     */
+Value       coerce(Value v, VarType target);          /* safe implicit cast */
 int         types_compatible(VarType declared,
                              VarType given);          /* 1 = ok, 0 = error */
 const char *type_name(VarType t);                     /* Bangla type name  */

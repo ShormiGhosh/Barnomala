@@ -21,6 +21,10 @@ SYMTABLE_SRC = symtable.c
 SYMTABLE_HDR = symtable.h
 AST_SRC = ast.c
 AST_HDR = ast.h
+TAC_SRC = tac.c
+TAC_HDR = tac.h
+IRGEN_SRC = irgen.c
+IRGEN_HDR = irgen.h
 
 # Default target
 all: $(TARGET)
@@ -34,8 +38,8 @@ $(LEX_OUTPUT): $(LEX_SOURCE) $(YACC_HEADER)
 	$(LEX) $(LEX_SOURCE)
 
 # Compile the lexer, parser, symbol table and AST together
-$(TARGET): $(LEX_OUTPUT) $(YACC_OUTPUT) $(SYMTABLE_SRC) $(SYMTABLE_HDR) $(AST_SRC) $(AST_HDR)
-	$(CC) $(CFLAGS) $(LEX_OUTPUT) $(YACC_OUTPUT) $(SYMTABLE_SRC) $(AST_SRC) -o $(TARGET) -lm
+$(TARGET): $(LEX_OUTPUT) $(YACC_OUTPUT) $(SYMTABLE_SRC) $(SYMTABLE_HDR) $(AST_SRC) $(AST_HDR) $(TAC_SRC) $(TAC_HDR) $(IRGEN_SRC) $(IRGEN_HDR)
+	$(CC) $(CFLAGS) $(LEX_OUTPUT) $(YACC_OUTPUT) $(SYMTABLE_SRC) $(AST_SRC) $(TAC_SRC) $(IRGEN_SRC) -o $(TARGET) -lm
 	@echo "✓ Compilation successful! Executable: $(TARGET)"
 
 # Run the compiler on input file

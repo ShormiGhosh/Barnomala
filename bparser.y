@@ -10,6 +10,7 @@ extern unsigned int __stdcall SetConsoleCP(unsigned int wCodePageID);
 extern unsigned int __stdcall SetConsoleOutputCP(unsigned int wCodePageID);
 #endif
 #include "ast.h"   /* brings in symtable.h, AstNode, OP_*, eval_expr, exec_stmt */
+#include "irgen.h"
 
 void yyerror(const char *s);
 extern int yylex();
@@ -19,6 +20,10 @@ extern void init_indent();
 
 /* suppress_execution referenced by symtable.c; always 0 in AST mode */
 int suppress_execution = 0;
+
+static int   g_emit_ir = 0;
+static FILE *g_ir_out = NULL;
+static const char *g_ir_path = NULL;
 %}
 
 /* ast.h (which includes symtable.h) must also appear in bparser.tab.h
@@ -88,6 +93,15 @@ int suppress_execution = 0;
 program:
     PROGRAM_START newlines statements PROGRAM_END optional_newlines
     {
+        if (g_emit_ir && g_ir_out) {
+            TacProgram final_tac;
+            tac_program_init(&final_tac);
+            tac_generate_from_ast($3, &final_tac);
+            fprintf(g_ir_out, "=== Generated TAC ===\n");
+            tac_program_print(g_ir_out, &final_tac);
+            tac_program_free(&final_tac);
+        }
+
         ExecResult r = exec_stmt($3);
         free_value(r.retval);
         node_free($3);
@@ -95,6 +109,15 @@ program:
     }
     | PROGRAM_START statements PROGRAM_END optional_newlines
     {
+        if (g_emit_ir && g_ir_out) {
+            TacProgram final_tac;
+            tac_program_init(&final_tac);
+            tac_generate_from_ast($2, &final_tac);
+            fprintf(g_ir_out, "=== Generated TAC ===\n");
+            tac_program_print(g_ir_out, &final_tac);
+            tac_program_free(&final_tac);
+        }
+
         ExecResult r = exec_stmt($2);
         free_value(r.retval);
         node_free($2);
@@ -582,7 +605,7 @@ math_function:
 %%
 
 void yyerror(const char *s) {
-    fprintf(stderr, "✗ Syntax error at line %d: %s\n", yylineno, s);
+    fprintf(stderr, "ত্রুটি (লাইন %d): সিনট্যাক্স ত্রুটি (%s)\n", yylineno, s);
 }
 
 /* Normalize precomposed Bengali characters to decomposed form */
@@ -635,6 +658,9 @@ FILE* normalize_input(FILE *input) {
 }
 
 int main(int argc, char *argv[]) {
+    const char *input_path = NULL;
+    const char *ir_path = "ir.out.txt";
+
     /* Switch the Windows console to UTF-8 so Bengali input/output is not
        mangled into '?' by the default ANSI code page. Works in both
        Windows Terminal and MSYS2 mintty. */
@@ -648,14 +674,47 @@ int main(int argc, char *argv[]) {
     _setmode(_fileno(stdout), _O_BINARY);
     _setmode(_fileno(stderr), _O_BINARY);
 
-    if (argc < 2) {
-        printf("Usage: %s <input_file>\n", argv[0]);
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--ir") == 0) {
+            g_emit_ir = 1;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                ir_path = argv[i + 1];
+                i++;
+            }
+            continue;
+        }
+
+        if (!input_path) {
+            input_path = argv[i];
+            continue;
+        }
+
+        fprintf(stderr, "ত্রুটি: অপ্রত্যাশিত আর্গুমেন্ট '%s'\n", argv[i]);
+        fprintf(stderr, "ব্যবহার: %s <input_file> [--ir [ir_output_file]]\n", argv[0]);
         return 1;
     }
+
+    if (!input_path) {
+        fprintf(stderr, "ব্যবহার: %s <input_file> [--ir [ir_output_file]]\n", argv[0]);
+        return 1;
+    }
+
+    if (g_emit_ir) {
+        g_ir_path = ir_path;
+        g_ir_out = fopen(g_ir_path, "w");
+        if (!g_ir_out) {
+            fprintf(stderr, "ত্রুটি: IR আউটপুট ফাইল '%s' খোলা যায়নি।\n", g_ir_path);
+            return 1;
+        }
+    }
     
-    FILE *fp = fopen(argv[1], "r");
+    FILE *fp = fopen(input_path, "r");
     if (!fp) {
-        fprintf(stderr, "Error: Cannot open file '%s'\n", argv[1]);
+        fprintf(stderr, "ত্রুটি: ইনপুট ফাইল '%s' খোলা যায়নি।\n", input_path);
+        if (g_ir_out) {
+            fclose(g_ir_out);
+            g_ir_out = NULL;
+        }
         return 1;
     }
     
@@ -673,6 +732,12 @@ int main(int argc, char *argv[]) {
     symtable_free();   /* release all symbol table memory */
     func_table_free(); /* release all function table memory */
     fclose(yyin);
+
+    if (g_ir_out) {
+        fclose(g_ir_out);
+        g_ir_out = NULL;
+        printf("IR লেখা হয়েছে: %s\n", g_ir_path ? g_ir_path : "ir.out.txt");
+    }
 
     if (result == 0) {
         printf("\n=== Parsing Complete ===\n");

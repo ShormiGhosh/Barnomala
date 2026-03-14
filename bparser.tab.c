@@ -80,6 +80,7 @@ extern unsigned int __stdcall SetConsoleCP(unsigned int wCodePageID);
 extern unsigned int __stdcall SetConsoleOutputCP(unsigned int wCodePageID);
 #endif
 #include "ast.h"   /* brings in symtable.h, AstNode, OP_*, eval_expr, exec_stmt */
+#include "irgen.h"
 
 void yyerror(const char *s);
 extern int yylex();
@@ -90,7 +91,11 @@ extern void init_indent();
 /* suppress_execution referenced by symtable.c; always 0 in AST mode */
 int suppress_execution = 0;
 
-#line 94 "bparser.tab.c"
+static int   g_emit_ir = 0;
+static FILE *g_ir_out = NULL;
+static const char *g_ir_path = NULL;
+
+#line 99 "bparser.tab.c"
 
 # ifndef YY_CAST
 #  ifdef __cplusplus
@@ -608,16 +613,16 @@ static const yytype_int8 yytranslate[] =
 /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_int16 yyrline[] =
 {
-       0,    89,    89,    96,   106,   107,   110,   112,   119,   122,
-     133,   140,   141,   145,   146,   147,   148,   149,   150,   151,
-     152,   153,   154,   155,   156,   165,   166,   167,   168,   172,
-     180,   191,   192,   193,   194,   195,   199,   209,   218,   227,
-     228,   232,   236,   244,   255,   265,   277,   285,   296,   303,
-     313,   320,   330,   337,   347,   356,   363,   370,   379,   388,
-     399,   408,   420,   427,   437,   447,   448,   450,   452,   454,
-     456,   458,   460,   462,   464,   466,   468,   470,   472,   474,
-     479,   485,   494,   500,   506,   512,   518,   524,   530,   536,
-     537,   538,   539,   543,   550,   556,   562,   568,   574
+       0,    94,    94,   110,   129,   130,   133,   135,   142,   145,
+     156,   163,   164,   168,   169,   170,   171,   172,   173,   174,
+     175,   176,   177,   178,   179,   188,   189,   190,   191,   195,
+     203,   214,   215,   216,   217,   218,   222,   232,   241,   250,
+     251,   255,   259,   267,   278,   288,   300,   308,   319,   326,
+     336,   343,   353,   360,   370,   379,   386,   393,   402,   411,
+     422,   431,   443,   450,   460,   470,   471,   473,   475,   477,
+     479,   481,   483,   485,   487,   489,   491,   493,   495,   497,
+     502,   508,   517,   523,   529,   535,   541,   547,   553,   559,
+     560,   561,   562,   566,   573,   579,   585,   591,   597
 };
 #endif
 
@@ -1423,37 +1428,55 @@ yyreduce:
   switch (yyn)
     {
   case 2: /* program: PROGRAM_START newlines statements PROGRAM_END optional_newlines  */
-#line 90 "bparser.y"
+#line 95 "bparser.y"
     {
+        if (g_emit_ir && g_ir_out) {
+            TacProgram final_tac;
+            tac_program_init(&final_tac);
+            tac_generate_from_ast((yyvsp[-2].node), &final_tac);
+            fprintf(g_ir_out, "=== Generated TAC ===\n");
+            tac_program_print(g_ir_out, &final_tac);
+            tac_program_free(&final_tac);
+        }
+
         ExecResult r = exec_stmt((yyvsp[-2].node));
         free_value(r.retval);
         node_free((yyvsp[-2].node));
         printf("✓ Program parsed successfully!\n");
     }
-#line 1434 "bparser.tab.c"
+#line 1448 "bparser.tab.c"
     break;
 
   case 3: /* program: PROGRAM_START statements PROGRAM_END optional_newlines  */
-#line 97 "bparser.y"
+#line 111 "bparser.y"
     {
+        if (g_emit_ir && g_ir_out) {
+            TacProgram final_tac;
+            tac_program_init(&final_tac);
+            tac_generate_from_ast((yyvsp[-2].node), &final_tac);
+            fprintf(g_ir_out, "=== Generated TAC ===\n");
+            tac_program_print(g_ir_out, &final_tac);
+            tac_program_free(&final_tac);
+        }
+
         ExecResult r = exec_stmt((yyvsp[-2].node));
         free_value(r.retval);
         node_free((yyvsp[-2].node));
         printf("✓ Program parsed successfully!\n");
     }
-#line 1445 "bparser.tab.c"
+#line 1468 "bparser.tab.c"
     break;
 
   case 8: /* statements: %empty  */
-#line 119 "bparser.y"
+#line 142 "bparser.y"
     {
         (yyval.node) = NULL;
     }
-#line 1453 "bparser.tab.c"
+#line 1476 "bparser.tab.c"
     break;
 
   case 9: /* statements: statements statement  */
-#line 123 "bparser.y"
+#line 146 "bparser.y"
     {
         if ((yyvsp[-1].node) == NULL) {
             (yyval.node) = (yyvsp[0].node);
@@ -1464,131 +1487,131 @@ yyreduce:
             (yyval.node) = seq;
         }
     }
-#line 1468 "bparser.tab.c"
+#line 1491 "bparser.tab.c"
     break;
 
   case 10: /* statements: statements NEWLINE  */
-#line 134 "bparser.y"
+#line 157 "bparser.y"
     {
         (yyval.node) = (yyvsp[-1].node);
     }
-#line 1476 "bparser.tab.c"
+#line 1499 "bparser.tab.c"
     break;
 
   case 11: /* statement: simple_statement NEWLINE  */
-#line 140 "bparser.y"
+#line 163 "bparser.y"
                               { (yyval.node) = (yyvsp[-1].node); }
-#line 1482 "bparser.tab.c"
+#line 1505 "bparser.tab.c"
     break;
 
   case 12: /* statement: compound_statement  */
-#line 141 "bparser.y"
+#line 164 "bparser.y"
                               { (yyval.node) = (yyvsp[0].node); }
-#line 1488 "bparser.tab.c"
+#line 1511 "bparser.tab.c"
     break;
 
   case 13: /* simple_statement: declaration  */
-#line 145 "bparser.y"
+#line 168 "bparser.y"
                           { (yyval.node) = (yyvsp[0].node); }
-#line 1494 "bparser.tab.c"
+#line 1517 "bparser.tab.c"
     break;
 
   case 14: /* simple_statement: assignment  */
-#line 146 "bparser.y"
+#line 169 "bparser.y"
                           { (yyval.node) = (yyvsp[0].node); }
-#line 1500 "bparser.tab.c"
+#line 1523 "bparser.tab.c"
     break;
 
   case 15: /* simple_statement: array_assignment  */
-#line 147 "bparser.y"
+#line 170 "bparser.y"
                           { (yyval.node) = (yyvsp[0].node); }
-#line 1506 "bparser.tab.c"
+#line 1529 "bparser.tab.c"
     break;
 
   case 16: /* simple_statement: input_statement  */
-#line 148 "bparser.y"
+#line 171 "bparser.y"
                           { (yyval.node) = (yyvsp[0].node); }
-#line 1512 "bparser.tab.c"
+#line 1535 "bparser.tab.c"
     break;
 
   case 17: /* simple_statement: print_statement  */
-#line 149 "bparser.y"
+#line 172 "bparser.y"
                           { (yyval.node) = (yyvsp[0].node); }
-#line 1518 "bparser.tab.c"
+#line 1541 "bparser.tab.c"
     break;
 
   case 18: /* simple_statement: return_statement  */
-#line 150 "bparser.y"
+#line 173 "bparser.y"
                           { (yyval.node) = (yyvsp[0].node); }
-#line 1524 "bparser.tab.c"
+#line 1547 "bparser.tab.c"
     break;
 
   case 19: /* simple_statement: break_statement  */
-#line 151 "bparser.y"
+#line 174 "bparser.y"
                           { (yyval.node) = (yyvsp[0].node); }
-#line 1530 "bparser.tab.c"
+#line 1553 "bparser.tab.c"
     break;
 
   case 20: /* simple_statement: continue_statement  */
-#line 152 "bparser.y"
+#line 175 "bparser.y"
                           { (yyval.node) = (yyvsp[0].node); }
-#line 1536 "bparser.tab.c"
+#line 1559 "bparser.tab.c"
     break;
 
   case 21: /* simple_statement: increment_statement  */
-#line 153 "bparser.y"
+#line 176 "bparser.y"
                           { (yyval.node) = (yyvsp[0].node); }
-#line 1542 "bparser.tab.c"
+#line 1565 "bparser.tab.c"
     break;
 
   case 22: /* simple_statement: decrement_statement  */
-#line 154 "bparser.y"
+#line 177 "bparser.y"
                           { (yyval.node) = (yyvsp[0].node); }
-#line 1548 "bparser.tab.c"
+#line 1571 "bparser.tab.c"
     break;
 
   case 23: /* simple_statement: array_declaration  */
-#line 155 "bparser.y"
+#line 178 "bparser.y"
                           { (yyval.node) = (yyvsp[0].node); }
-#line 1554 "bparser.tab.c"
+#line 1577 "bparser.tab.c"
     break;
 
   case 24: /* simple_statement: function_call SEMICOLON  */
-#line 157 "bparser.y"
+#line 180 "bparser.y"
     {
         AstNode *n = node_new(N_CALL_STMT, yylineno);
         n->left = (yyvsp[-1].node);
         (yyval.node) = n;
     }
-#line 1564 "bparser.tab.c"
+#line 1587 "bparser.tab.c"
     break;
 
   case 25: /* compound_statement: if_statement  */
-#line 165 "bparser.y"
+#line 188 "bparser.y"
                           { (yyval.node) = (yyvsp[0].node); }
-#line 1570 "bparser.tab.c"
+#line 1593 "bparser.tab.c"
     break;
 
   case 26: /* compound_statement: while_statement  */
-#line 166 "bparser.y"
+#line 189 "bparser.y"
                           { (yyval.node) = (yyvsp[0].node); }
-#line 1576 "bparser.tab.c"
+#line 1599 "bparser.tab.c"
     break;
 
   case 27: /* compound_statement: for_statement  */
-#line 167 "bparser.y"
+#line 190 "bparser.y"
                           { (yyval.node) = (yyvsp[0].node); }
-#line 1582 "bparser.tab.c"
+#line 1605 "bparser.tab.c"
     break;
 
   case 28: /* compound_statement: function_definition  */
-#line 168 "bparser.y"
+#line 191 "bparser.y"
                           { (yyval.node) = (yyvsp[0].node); }
-#line 1588 "bparser.tab.c"
+#line 1611 "bparser.tab.c"
     break;
 
   case 29: /* declaration: type IDENTIFIER SEMICOLON  */
-#line 173 "bparser.y"
+#line 196 "bparser.y"
     {
         AstNode *n = node_new(N_DECL, yylineno);
         n->sval  = (yyvsp[-1].strval);
@@ -1596,11 +1619,11 @@ yyreduce:
         n->left  = NULL;
         (yyval.node) = n;
     }
-#line 1600 "bparser.tab.c"
+#line 1623 "bparser.tab.c"
     break;
 
   case 30: /* declaration: type IDENTIFIER ASSIGN expression SEMICOLON  */
-#line 181 "bparser.y"
+#line 204 "bparser.y"
     {
         AstNode *n = node_new(N_DECL, yylineno);
         n->sval  = (yyvsp[-3].strval);
@@ -1608,90 +1631,90 @@ yyreduce:
         n->left  = (yyvsp[-1].node);
         (yyval.node) = n;
     }
-#line 1612 "bparser.tab.c"
+#line 1635 "bparser.tab.c"
     break;
 
   case 31: /* type: NUMBER_TYPE  */
-#line 191 "bparser.y"
+#line 214 "bparser.y"
                  { (yyval.vtype) = TYPE_NUMBER;  }
-#line 1618 "bparser.tab.c"
+#line 1641 "bparser.tab.c"
     break;
 
   case 32: /* type: DECIMAL_TYPE  */
-#line 192 "bparser.y"
+#line 215 "bparser.y"
                    { (yyval.vtype) = TYPE_DECIMAL; }
-#line 1624 "bparser.tab.c"
+#line 1647 "bparser.tab.c"
     break;
 
   case 33: /* type: BOOL_TYPE  */
-#line 193 "bparser.y"
+#line 216 "bparser.y"
                    { (yyval.vtype) = TYPE_BOOL;    }
-#line 1630 "bparser.tab.c"
+#line 1653 "bparser.tab.c"
     break;
 
   case 34: /* type: CHAR_TYPE  */
-#line 194 "bparser.y"
+#line 217 "bparser.y"
                    { (yyval.vtype) = TYPE_CHAR;    }
-#line 1636 "bparser.tab.c"
+#line 1659 "bparser.tab.c"
     break;
 
   case 35: /* type: STRING_TYPE  */
-#line 195 "bparser.y"
+#line 218 "bparser.y"
                    { (yyval.vtype) = TYPE_STRING;  }
-#line 1642 "bparser.tab.c"
+#line 1665 "bparser.tab.c"
     break;
 
   case 36: /* assignment: IDENTIFIER ASSIGN expression SEMICOLON  */
-#line 200 "bparser.y"
+#line 223 "bparser.y"
     {
         AstNode *n = node_new(N_ASSIGN, yylineno);
         n->sval = (yyvsp[-3].strval);
         n->left = (yyvsp[-1].node);
         (yyval.node) = n;
     }
-#line 1653 "bparser.tab.c"
+#line 1676 "bparser.tab.c"
     break;
 
   case 37: /* input_statement: INPUT LPAREN IDENTIFIER RPAREN SEMICOLON  */
-#line 210 "bparser.y"
+#line 233 "bparser.y"
     {
         AstNode *n = node_new(N_INPUT, yylineno);
         n->sval = (yyvsp[-2].strval);
         (yyval.node) = n;
     }
-#line 1663 "bparser.tab.c"
+#line 1686 "bparser.tab.c"
     break;
 
   case 38: /* print_statement: PRINT expression SEMICOLON  */
-#line 219 "bparser.y"
+#line 242 "bparser.y"
     {
         AstNode *n = node_new(N_PRINT, yylineno);
         n->left = (yyvsp[-1].node);
         (yyval.node) = n;
     }
-#line 1673 "bparser.tab.c"
+#line 1696 "bparser.tab.c"
     break;
 
   case 39: /* suite: simple_statement NEWLINE  */
-#line 227 "bparser.y"
+#line 250 "bparser.y"
                                    { (yyval.node) = (yyvsp[-1].node); }
-#line 1679 "bparser.tab.c"
+#line 1702 "bparser.tab.c"
     break;
 
   case 40: /* suite: NEWLINE INDENT statements DEDENT  */
-#line 228 "bparser.y"
+#line 251 "bparser.y"
                                        { (yyval.node) = (yyvsp[-1].node); }
-#line 1685 "bparser.tab.c"
+#line 1708 "bparser.tab.c"
     break;
 
   case 41: /* if_header: IF expression COLON  */
-#line 232 "bparser.y"
+#line 255 "bparser.y"
                         { (yyval.node) = (yyvsp[-1].node); }
-#line 1691 "bparser.tab.c"
+#line 1714 "bparser.tab.c"
     break;
 
   case 42: /* if_statement: if_header suite  */
-#line 237 "bparser.y"
+#line 260 "bparser.y"
     {
         AstNode *n = node_new(N_IF, yylineno);
         n->left  = (yyvsp[-1].node);
@@ -1699,11 +1722,11 @@ yyreduce:
         n->extra = NULL;
         (yyval.node) = n;
     }
-#line 1703 "bparser.tab.c"
+#line 1726 "bparser.tab.c"
     break;
 
   case 43: /* if_statement: if_header suite ELSE COLON suite  */
-#line 245 "bparser.y"
+#line 268 "bparser.y"
     {
         AstNode *n = node_new(N_IF, yylineno);
         n->left  = (yyvsp[-4].node);
@@ -1711,22 +1734,22 @@ yyreduce:
         n->extra = (yyvsp[0].node);
         (yyval.node) = n;
     }
-#line 1715 "bparser.tab.c"
+#line 1738 "bparser.tab.c"
     break;
 
   case 44: /* while_statement: WHILE expression COLON suite  */
-#line 256 "bparser.y"
+#line 279 "bparser.y"
     {
         AstNode *n = node_new(N_WHILE, yylineno);
         n->left  = (yyvsp[-2].node);   /* condition — re-evaluated every iteration */
         n->right = (yyvsp[0].node);   /* body */
         (yyval.node) = n;
     }
-#line 1726 "bparser.tab.c"
+#line 1749 "bparser.tab.c"
     break;
 
   case 45: /* for_statement: FOR_RANGE LPAREN IDENTIFIER RPAREN expression FROM expression COLON suite  */
-#line 266 "bparser.y"
+#line 289 "bparser.y"
     {
         AstNode *n = node_new(N_FOR_RANGE, yylineno);
         n->sval  = (yyvsp[-6].strval);
@@ -1735,11 +1758,11 @@ yyreduce:
         n->extra = (yyvsp[0].node);
         (yyval.node) = n;
     }
-#line 1739 "bparser.tab.c"
+#line 1762 "bparser.tab.c"
     break;
 
   case 46: /* function_definition: FUNCTION IDENTIFIER LPAREN parameter_list RPAREN COLON suite  */
-#line 278 "bparser.y"
+#line 301 "bparser.y"
     {
         AstNode *n = node_new(N_FUNCDEF, yylineno);
         n->sval  = (yyvsp[-5].strval);
@@ -1747,11 +1770,11 @@ yyreduce:
         n->right = (yyvsp[0].node);
         (yyval.node) = n;
     }
-#line 1751 "bparser.tab.c"
+#line 1774 "bparser.tab.c"
     break;
 
   case 47: /* function_definition: FUNCTION IDENTIFIER LPAREN RPAREN COLON suite  */
-#line 286 "bparser.y"
+#line 309 "bparser.y"
     {
         AstNode *n = node_new(N_FUNCDEF, yylineno);
         n->sval  = (yyvsp[-4].strval);
@@ -1759,123 +1782,123 @@ yyreduce:
         n->right = (yyvsp[0].node);
         (yyval.node) = n;
     }
-#line 1763 "bparser.tab.c"
+#line 1786 "bparser.tab.c"
     break;
 
   case 48: /* parameter_list: IDENTIFIER  */
-#line 297 "bparser.y"
+#line 320 "bparser.y"
     {
         AstNode *n = node_new(N_PARAM_LIST, yylineno);
         n->sval  = (yyvsp[0].strval);
         n->right = NULL;
         (yyval.node) = n;
     }
-#line 1774 "bparser.tab.c"
+#line 1797 "bparser.tab.c"
     break;
 
   case 49: /* parameter_list: parameter_list COMMA IDENTIFIER  */
-#line 304 "bparser.y"
+#line 327 "bparser.y"
     {
         AstNode *n = node_new(N_PARAM_LIST, yylineno);
         n->sval  = (yyvsp[0].strval);
         n->right = (yyvsp[-2].node);
         (yyval.node) = n;
     }
-#line 1785 "bparser.tab.c"
+#line 1808 "bparser.tab.c"
     break;
 
   case 50: /* function_call: IDENTIFIER LPAREN argument_list RPAREN  */
-#line 314 "bparser.y"
+#line 337 "bparser.y"
     {
         AstNode *n = node_new(N_CALL, yylineno);
         n->sval = (yyvsp[-3].strval);
         n->left = (yyvsp[-1].node);
         (yyval.node) = n;
     }
-#line 1796 "bparser.tab.c"
+#line 1819 "bparser.tab.c"
     break;
 
   case 51: /* function_call: IDENTIFIER LPAREN RPAREN  */
-#line 321 "bparser.y"
+#line 344 "bparser.y"
     {
         AstNode *n = node_new(N_CALL, yylineno);
         n->sval = (yyvsp[-2].strval);
         n->left = NULL;
         (yyval.node) = n;
     }
-#line 1807 "bparser.tab.c"
+#line 1830 "bparser.tab.c"
     break;
 
   case 52: /* argument_list: expression  */
-#line 331 "bparser.y"
+#line 354 "bparser.y"
     {
         AstNode *n = node_new(N_ARG_LIST, yylineno);
         n->left  = (yyvsp[0].node);
         n->right = NULL;
         (yyval.node) = n;
     }
-#line 1818 "bparser.tab.c"
+#line 1841 "bparser.tab.c"
     break;
 
   case 53: /* argument_list: argument_list COMMA expression  */
-#line 338 "bparser.y"
+#line 361 "bparser.y"
     {
         AstNode *n = node_new(N_ARG_LIST, yylineno);
         n->left  = (yyvsp[0].node);
         n->right = (yyvsp[-2].node);
         (yyval.node) = n;
     }
-#line 1829 "bparser.tab.c"
+#line 1852 "bparser.tab.c"
     break;
 
   case 54: /* return_statement: RETURN expression SEMICOLON  */
-#line 348 "bparser.y"
+#line 371 "bparser.y"
     {
         AstNode *n = node_new(N_RETURN, yylineno);
         n->left = (yyvsp[-1].node);
         (yyval.node) = n;
     }
-#line 1839 "bparser.tab.c"
+#line 1862 "bparser.tab.c"
     break;
 
   case 55: /* break_statement: BREAK SEMICOLON  */
-#line 357 "bparser.y"
+#line 380 "bparser.y"
     {
         (yyval.node) = node_new(N_BREAK, yylineno);
     }
-#line 1847 "bparser.tab.c"
+#line 1870 "bparser.tab.c"
     break;
 
   case 56: /* continue_statement: CONTINUE SEMICOLON  */
-#line 364 "bparser.y"
+#line 387 "bparser.y"
     {
         (yyval.node) = node_new(N_CONTINUE, yylineno);
     }
-#line 1855 "bparser.tab.c"
+#line 1878 "bparser.tab.c"
     break;
 
   case 57: /* increment_statement: IDENTIFIER INC SEMICOLON  */
-#line 371 "bparser.y"
+#line 394 "bparser.y"
     {
         AstNode *n = node_new(N_INC, yylineno);
         n->sval = (yyvsp[-2].strval);
         (yyval.node) = n;
     }
-#line 1865 "bparser.tab.c"
+#line 1888 "bparser.tab.c"
     break;
 
   case 58: /* decrement_statement: IDENTIFIER DEC SEMICOLON  */
-#line 380 "bparser.y"
+#line 403 "bparser.y"
     {
         AstNode *n = node_new(N_DEC, yylineno);
         n->sval = (yyvsp[-2].strval);
         (yyval.node) = n;
     }
-#line 1875 "bparser.tab.c"
+#line 1898 "bparser.tab.c"
     break;
 
   case 59: /* array_assignment: IDENTIFIER LBRACKET expression RBRACKET ASSIGN expression SEMICOLON  */
-#line 389 "bparser.y"
+#line 412 "bparser.y"
     {
         AstNode *n = node_new(N_ARRAY_ASSIGN, yylineno);
         n->sval  = (yyvsp[-6].strval);
@@ -1883,11 +1906,11 @@ yyreduce:
         n->right = (yyvsp[-1].node);   /* new value */
         (yyval.node) = n;
     }
-#line 1887 "bparser.tab.c"
+#line 1910 "bparser.tab.c"
     break;
 
   case 60: /* array_declaration: ARRAY LPAREN type RPAREN IDENTIFIER LBRACKET INT_LITERAL RBRACKET SEMICOLON  */
-#line 400 "bparser.y"
+#line 423 "bparser.y"
     {
         AstNode *n = node_new(N_ARRAY_DECL, yylineno);
         n->sval  = (yyvsp[-4].strval);
@@ -1896,11 +1919,11 @@ yyreduce:
         n->left  = NULL;
         (yyval.node) = n;
     }
-#line 1900 "bparser.tab.c"
+#line 1923 "bparser.tab.c"
     break;
 
   case 61: /* array_declaration: ARRAY LPAREN type RPAREN IDENTIFIER LBRACKET INT_LITERAL RBRACKET ASSIGN LBRACKET array_elements RBRACKET SEMICOLON  */
-#line 409 "bparser.y"
+#line 432 "bparser.y"
     {
         AstNode *n = node_new(N_ARRAY_DECL, yylineno);
         n->sval  = (yyvsp[-8].strval);
@@ -1909,312 +1932,312 @@ yyreduce:
         n->left  = (yyvsp[-2].node);
         (yyval.node) = n;
     }
-#line 1913 "bparser.tab.c"
+#line 1936 "bparser.tab.c"
     break;
 
   case 62: /* array_elements: expression  */
-#line 421 "bparser.y"
+#line 444 "bparser.y"
     {
         AstNode *n = node_new(N_INIT_LIST, yylineno);
         n->left  = (yyvsp[0].node);
         n->right = NULL;
         (yyval.node) = n;
     }
-#line 1924 "bparser.tab.c"
+#line 1947 "bparser.tab.c"
     break;
 
   case 63: /* array_elements: array_elements COMMA expression  */
-#line 428 "bparser.y"
+#line 451 "bparser.y"
     {
         AstNode *n = node_new(N_INIT_LIST, yylineno);
         n->left  = (yyvsp[0].node);
         n->right = (yyvsp[-2].node);
         (yyval.node) = n;
     }
-#line 1935 "bparser.tab.c"
+#line 1958 "bparser.tab.c"
     break;
 
   case 64: /* array_access: IDENTIFIER LBRACKET expression RBRACKET  */
-#line 438 "bparser.y"
+#line 461 "bparser.y"
     {
         AstNode *n = node_new(N_ARRAY_ACCESS, yylineno);
         n->sval = (yyvsp[-3].strval);
         n->left = (yyvsp[-1].node);
         (yyval.node) = n;
     }
-#line 1946 "bparser.tab.c"
+#line 1969 "bparser.tab.c"
     break;
 
   case 65: /* expression: primary_expression  */
-#line 447 "bparser.y"
+#line 470 "bparser.y"
                                           { (yyval.node) = (yyvsp[0].node); }
-#line 1952 "bparser.tab.c"
+#line 1975 "bparser.tab.c"
     break;
 
   case 66: /* expression: expression PLUS expression  */
-#line 449 "bparser.y"
+#line 472 "bparser.y"
     { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_PLUS;  n->left=(yyvsp[-2].node); n->right=(yyvsp[0].node); (yyval.node)=n; }
-#line 1958 "bparser.tab.c"
+#line 1981 "bparser.tab.c"
     break;
 
   case 67: /* expression: expression MINUS expression  */
-#line 451 "bparser.y"
+#line 474 "bparser.y"
     { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_MINUS; n->left=(yyvsp[-2].node); n->right=(yyvsp[0].node); (yyval.node)=n; }
-#line 1964 "bparser.tab.c"
+#line 1987 "bparser.tab.c"
     break;
 
   case 68: /* expression: expression MULT expression  */
-#line 453 "bparser.y"
+#line 476 "bparser.y"
     { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_MULT;  n->left=(yyvsp[-2].node); n->right=(yyvsp[0].node); (yyval.node)=n; }
-#line 1970 "bparser.tab.c"
+#line 1993 "bparser.tab.c"
     break;
 
   case 69: /* expression: expression DIV expression  */
-#line 455 "bparser.y"
+#line 478 "bparser.y"
     { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_DIV;   n->left=(yyvsp[-2].node); n->right=(yyvsp[0].node); (yyval.node)=n; }
-#line 1976 "bparser.tab.c"
+#line 1999 "bparser.tab.c"
     break;
 
   case 70: /* expression: expression MOD expression  */
-#line 457 "bparser.y"
+#line 480 "bparser.y"
     { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_MOD;   n->left=(yyvsp[-2].node); n->right=(yyvsp[0].node); (yyval.node)=n; }
-#line 1982 "bparser.tab.c"
+#line 2005 "bparser.tab.c"
     break;
 
   case 71: /* expression: expression AND expression  */
-#line 459 "bparser.y"
+#line 482 "bparser.y"
     { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_AND;   n->left=(yyvsp[-2].node); n->right=(yyvsp[0].node); (yyval.node)=n; }
-#line 1988 "bparser.tab.c"
+#line 2011 "bparser.tab.c"
     break;
 
   case 72: /* expression: expression OR expression  */
-#line 461 "bparser.y"
+#line 484 "bparser.y"
     { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_OR;    n->left=(yyvsp[-2].node); n->right=(yyvsp[0].node); (yyval.node)=n; }
-#line 1994 "bparser.tab.c"
+#line 2017 "bparser.tab.c"
     break;
 
   case 73: /* expression: expression EQUAL expression  */
-#line 463 "bparser.y"
+#line 486 "bparser.y"
     { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_EQ;    n->left=(yyvsp[-2].node); n->right=(yyvsp[0].node); (yyval.node)=n; }
-#line 2000 "bparser.tab.c"
+#line 2023 "bparser.tab.c"
     break;
 
   case 74: /* expression: expression NOT_EQUAL expression  */
-#line 465 "bparser.y"
+#line 488 "bparser.y"
     { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_NEQ;   n->left=(yyvsp[-2].node); n->right=(yyvsp[0].node); (yyval.node)=n; }
-#line 2006 "bparser.tab.c"
+#line 2029 "bparser.tab.c"
     break;
 
   case 75: /* expression: expression GREATER expression  */
-#line 467 "bparser.y"
+#line 490 "bparser.y"
     { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_GT;    n->left=(yyvsp[-2].node); n->right=(yyvsp[0].node); (yyval.node)=n; }
-#line 2012 "bparser.tab.c"
+#line 2035 "bparser.tab.c"
     break;
 
   case 76: /* expression: expression LESS expression  */
-#line 469 "bparser.y"
+#line 492 "bparser.y"
     { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_LT;    n->left=(yyvsp[-2].node); n->right=(yyvsp[0].node); (yyval.node)=n; }
-#line 2018 "bparser.tab.c"
+#line 2041 "bparser.tab.c"
     break;
 
   case 77: /* expression: expression GREATER_EQUAL expression  */
-#line 471 "bparser.y"
+#line 494 "bparser.y"
     { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_GTE;   n->left=(yyvsp[-2].node); n->right=(yyvsp[0].node); (yyval.node)=n; }
-#line 2024 "bparser.tab.c"
+#line 2047 "bparser.tab.c"
     break;
 
   case 78: /* expression: expression LESS_EQUAL expression  */
-#line 473 "bparser.y"
+#line 496 "bparser.y"
     { AstNode *n=node_new(N_BINOP,yylineno); n->ival=OP_LTE;   n->left=(yyvsp[-2].node); n->right=(yyvsp[0].node); (yyval.node)=n; }
-#line 2030 "bparser.tab.c"
+#line 2053 "bparser.tab.c"
     break;
 
   case 79: /* expression: expression FROM expression  */
-#line 475 "bparser.y"
+#line 498 "bparser.y"
     {
         node_free((yyvsp[0].node));
         (yyval.node) = (yyvsp[-2].node);
     }
-#line 2039 "bparser.tab.c"
+#line 2062 "bparser.tab.c"
     break;
 
   case 80: /* expression: NOT expression  */
-#line 480 "bparser.y"
+#line 503 "bparser.y"
     {
         AstNode *n = node_new(N_UNARY_NOT, yylineno);
         n->left = (yyvsp[0].node);
         (yyval.node) = n;
     }
-#line 2049 "bparser.tab.c"
+#line 2072 "bparser.tab.c"
     break;
 
   case 81: /* expression: MINUS expression  */
-#line 486 "bparser.y"
+#line 509 "bparser.y"
     {
         AstNode *n = node_new(N_UNARY_NEG, yylineno);
         n->left = (yyvsp[0].node);
         (yyval.node) = n;
     }
-#line 2059 "bparser.tab.c"
+#line 2082 "bparser.tab.c"
     break;
 
   case 82: /* primary_expression: INT_LITERAL  */
-#line 495 "bparser.y"
+#line 518 "bparser.y"
     {
         AstNode *n = node_new(N_INT_LIT, yylineno);
         n->ival = (yyvsp[0].intval);
         (yyval.node) = n;
     }
-#line 2069 "bparser.tab.c"
+#line 2092 "bparser.tab.c"
     break;
 
   case 83: /* primary_expression: FLOAT_LITERAL  */
-#line 501 "bparser.y"
+#line 524 "bparser.y"
     {
         AstNode *n = node_new(N_FLOAT_LIT, yylineno);
         n->fval = (yyvsp[0].floatval);
         (yyval.node) = n;
     }
-#line 2079 "bparser.tab.c"
+#line 2102 "bparser.tab.c"
     break;
 
   case 84: /* primary_expression: STRING_LITERAL  */
-#line 507 "bparser.y"
+#line 530 "bparser.y"
     {
         AstNode *n = node_new(N_STRING_LIT, yylineno);
         n->sval = (yyvsp[0].strval);
         (yyval.node) = n;
     }
-#line 2089 "bparser.tab.c"
+#line 2112 "bparser.tab.c"
     break;
 
   case 85: /* primary_expression: CHAR_LITERAL  */
-#line 513 "bparser.y"
+#line 536 "bparser.y"
     {
         AstNode *n = node_new(N_CHAR_LIT, yylineno);
         n->sval = (yyvsp[0].strval);
         (yyval.node) = n;
     }
-#line 2099 "bparser.tab.c"
+#line 2122 "bparser.tab.c"
     break;
 
   case 86: /* primary_expression: IDENTIFIER  */
-#line 519 "bparser.y"
+#line 542 "bparser.y"
     {
         AstNode *n = node_new(N_IDENT, yylineno);
         n->sval = (yyvsp[0].strval);
         (yyval.node) = n;
     }
-#line 2109 "bparser.tab.c"
+#line 2132 "bparser.tab.c"
     break;
 
   case 87: /* primary_expression: BOOL_TRUE  */
-#line 525 "bparser.y"
+#line 548 "bparser.y"
     {
         AstNode *n = node_new(N_BOOL_LIT, yylineno);
         n->ival = 1;
         (yyval.node) = n;
     }
-#line 2119 "bparser.tab.c"
+#line 2142 "bparser.tab.c"
     break;
 
   case 88: /* primary_expression: BOOL_FALSE  */
-#line 531 "bparser.y"
+#line 554 "bparser.y"
     {
         AstNode *n = node_new(N_BOOL_LIT, yylineno);
         n->ival = 0;
         (yyval.node) = n;
     }
-#line 2129 "bparser.tab.c"
+#line 2152 "bparser.tab.c"
     break;
 
   case 89: /* primary_expression: array_access  */
-#line 536 "bparser.y"
+#line 559 "bparser.y"
                                { (yyval.node) = (yyvsp[0].node); }
-#line 2135 "bparser.tab.c"
+#line 2158 "bparser.tab.c"
     break;
 
   case 90: /* primary_expression: function_call  */
-#line 537 "bparser.y"
+#line 560 "bparser.y"
                                { (yyval.node) = (yyvsp[0].node); }
-#line 2141 "bparser.tab.c"
+#line 2164 "bparser.tab.c"
     break;
 
   case 91: /* primary_expression: math_function  */
-#line 538 "bparser.y"
+#line 561 "bparser.y"
                                { (yyval.node) = (yyvsp[0].node); }
-#line 2147 "bparser.tab.c"
+#line 2170 "bparser.tab.c"
     break;
 
   case 92: /* primary_expression: LPAREN expression RPAREN  */
-#line 539 "bparser.y"
+#line 562 "bparser.y"
                                { (yyval.node) = (yyvsp[-1].node); }
-#line 2153 "bparser.tab.c"
+#line 2176 "bparser.tab.c"
     break;
 
   case 93: /* math_function: POW LPAREN expression COMMA expression RPAREN  */
-#line 544 "bparser.y"
+#line 567 "bparser.y"
     {
         AstNode *n = node_new(N_MATH_POW, yylineno);
         n->left  = (yyvsp[-3].node);
         n->right = (yyvsp[-1].node);
         (yyval.node) = n;
     }
-#line 2164 "bparser.tab.c"
+#line 2187 "bparser.tab.c"
     break;
 
   case 94: /* math_function: SQRT LPAREN expression RPAREN  */
-#line 551 "bparser.y"
+#line 574 "bparser.y"
     {
         AstNode *n = node_new(N_MATH_SQRT, yylineno);
         n->left = (yyvsp[-1].node);
         (yyval.node) = n;
     }
-#line 2174 "bparser.tab.c"
+#line 2197 "bparser.tab.c"
     break;
 
   case 95: /* math_function: FLOOR LPAREN expression RPAREN  */
-#line 557 "bparser.y"
+#line 580 "bparser.y"
     {
         AstNode *n = node_new(N_MATH_FLOOR, yylineno);
         n->left = (yyvsp[-1].node);
         (yyval.node) = n;
     }
-#line 2184 "bparser.tab.c"
+#line 2207 "bparser.tab.c"
     break;
 
   case 96: /* math_function: CEIL LPAREN expression RPAREN  */
-#line 563 "bparser.y"
+#line 586 "bparser.y"
     {
         AstNode *n = node_new(N_MATH_CEIL, yylineno);
         n->left = (yyvsp[-1].node);
         (yyval.node) = n;
     }
-#line 2194 "bparser.tab.c"
+#line 2217 "bparser.tab.c"
     break;
 
   case 97: /* math_function: ABS LPAREN expression RPAREN  */
-#line 569 "bparser.y"
+#line 592 "bparser.y"
     {
         AstNode *n = node_new(N_MATH_ABS, yylineno);
         n->left = (yyvsp[-1].node);
         (yyval.node) = n;
     }
-#line 2204 "bparser.tab.c"
+#line 2227 "bparser.tab.c"
     break;
 
   case 98: /* math_function: LENGTH LPAREN IDENTIFIER RPAREN  */
-#line 575 "bparser.y"
+#line 598 "bparser.y"
     {
         AstNode *n = node_new(N_ARRAY_LEN, yylineno);
         n->sval = (yyvsp[-1].strval);
         (yyval.node) = n;
     }
-#line 2214 "bparser.tab.c"
+#line 2237 "bparser.tab.c"
     break;
 
 
-#line 2218 "bparser.tab.c"
+#line 2241 "bparser.tab.c"
 
       default: break;
     }
@@ -2407,11 +2430,11 @@ yyreturnlab:
   return yyresult;
 }
 
-#line 582 "bparser.y"
+#line 605 "bparser.y"
 
 
 void yyerror(const char *s) {
-    fprintf(stderr, "✗ Syntax error at line %d: %s\n", yylineno, s);
+    fprintf(stderr, "ত্রুটি (লাইন %d): সিনট্যাক্স ত্রুটি (%s)\n", yylineno, s);
 }
 
 /* Normalize precomposed Bengali characters to decomposed form */
@@ -2464,6 +2487,9 @@ FILE* normalize_input(FILE *input) {
 }
 
 int main(int argc, char *argv[]) {
+    const char *input_path = NULL;
+    const char *ir_path = "ir.out.txt";
+
     /* Switch the Windows console to UTF-8 so Bengali input/output is not
        mangled into '?' by the default ANSI code page. Works in both
        Windows Terminal and MSYS2 mintty. */
@@ -2477,14 +2503,47 @@ int main(int argc, char *argv[]) {
     _setmode(_fileno(stdout), _O_BINARY);
     _setmode(_fileno(stderr), _O_BINARY);
 
-    if (argc < 2) {
-        printf("Usage: %s <input_file>\n", argv[0]);
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--ir") == 0) {
+            g_emit_ir = 1;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                ir_path = argv[i + 1];
+                i++;
+            }
+            continue;
+        }
+
+        if (!input_path) {
+            input_path = argv[i];
+            continue;
+        }
+
+        fprintf(stderr, "ত্রুটি: অপ্রত্যাশিত আর্গুমেন্ট '%s'\n", argv[i]);
+        fprintf(stderr, "ব্যবহার: %s <input_file> [--ir [ir_output_file]]\n", argv[0]);
         return 1;
     }
+
+    if (!input_path) {
+        fprintf(stderr, "ব্যবহার: %s <input_file> [--ir [ir_output_file]]\n", argv[0]);
+        return 1;
+    }
+
+    if (g_emit_ir) {
+        g_ir_path = ir_path;
+        g_ir_out = fopen(g_ir_path, "w");
+        if (!g_ir_out) {
+            fprintf(stderr, "ত্রুটি: IR আউটপুট ফাইল '%s' খোলা যায়নি।\n", g_ir_path);
+            return 1;
+        }
+    }
     
-    FILE *fp = fopen(argv[1], "r");
+    FILE *fp = fopen(input_path, "r");
     if (!fp) {
-        fprintf(stderr, "Error: Cannot open file '%s'\n", argv[1]);
+        fprintf(stderr, "ত্রুটি: ইনপুট ফাইল '%s' খোলা যায়নি।\n", input_path);
+        if (g_ir_out) {
+            fclose(g_ir_out);
+            g_ir_out = NULL;
+        }
         return 1;
     }
     
@@ -2502,6 +2561,12 @@ int main(int argc, char *argv[]) {
     symtable_free();   /* release all symbol table memory */
     func_table_free(); /* release all function table memory */
     fclose(yyin);
+
+    if (g_ir_out) {
+        fclose(g_ir_out);
+        g_ir_out = NULL;
+        printf("IR লেখা হয়েছে: %s\n", g_ir_path ? g_ir_path : "ir.out.txt");
+    }
 
     if (result == 0) {
         printf("\n=== Parsing Complete ===\n");
